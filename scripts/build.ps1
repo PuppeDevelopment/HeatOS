@@ -8,16 +8,10 @@ Set-StrictMode -Version Latest
 function Get-IsExplorerLaunch {
     try {
         $self = Get-CimInstance Win32_Process -Filter "ProcessId = $PID"
-        if (-not $self) {
-            return $false
-        }
-
+        if (-not $self) { return $false }
         $parent = Get-Process -Id $self.ParentProcessId -ErrorAction SilentlyContinue
         return $null -ne $parent -and $parent.ProcessName -ieq "explorer"
-    }
-    catch {
-        return $false
-    }
+    } catch { return $false }
 }
 
 $pauseOnExit = Get-IsExplorerLaunch
@@ -31,126 +25,171 @@ function Pause-IfNeeded {
 
 try {
 
-$projectRoot = Split-Path -Parent $PSScriptRoot
-$buildDir = Join-Path $projectRoot "build"
+# ---- Paths ----------------------------------------------------------------
+$projectRoot  = Split-Path -Parent $PSScriptRoot
+$buildDir     = Join-Path $projectRoot "build"
+$srcDir       = Join-Path $projectRoot "src"
+$includeDir   = Join-Path $srcDir "include"
+$linkerScript = Join-Path $projectRoot "kernel.ld"
 
-$bootSource = Join-Path $projectRoot "src\boot\boot.asm"
-$kernelSource = Join-Path $projectRoot "src\kernel\kernel.asm"
+$bootSource   = Join-Path $srcDir "boot\boot.asm"
+$entrySource  = Join-Path $srcDir "kernel\entry.asm"
 
-$bootBin = Join-Path $buildDir "boot.bin"
-$kernelBin = Join-Path $buildDir "kernel.bin"
-$imagePath = Join-Path $buildDir "Heatos.img"
-$isoPath = Join-Path $buildDir "Heatos.iso"
+$bootBin      = Join-Path $buildDir "boot.bin"
+$kernelElf    = Join-Path $buildDir "kernel.elf"
+$kernelBin    = Join-Path $buildDir "kernel.bin"
+$imagePath    = Join-Path $buildDir "Heatos.img"
+$isoPath      = Join-Path $buildDir "Heatos.iso"
 
 $maxKernelSectors = 128
-$maxKernelBytes = 512 * $maxKernelSectors
+$maxKernelBytes   = 512 * $maxKernelSectors
 $floppyImageBytes = 1474560
 
 New-Item -ItemType Directory -Path $buildDir -Force | Out-Null
 
-$nasm = Get-Command nasm -ErrorAction SilentlyContinue
+# ---- Find NASM ------------------------------------------------------------
 $nasmPath = $null
-
-if ($nasm) {
-    $nasmPath = $nasm.Source
-}
+$nasmCmd = Get-Command nasm -ErrorAction SilentlyContinue
+if ($nasmCmd) { $nasmPath = $nasmCmd.Source }
 else {
     $nasmPath = @(
         (Join-Path $env:ProgramFiles "NASM\nasm.exe"),
         (Join-Path ${env:ProgramFiles(x86)} "NASM\nasm.exe")
     ) | Where-Object { $null -ne $_ -and (Test-Path $_) } | Select-Object -First 1
 }
-
 if (-not $nasmPath) {
-    throw "NASM was not found. Install with: winget install --id NASM.NASM -e --accept-package-agreements --accept-source-agreements, then reopen your terminal."
+    throw "NASM not found. Install: winget install --id NASM.NASM -e"
 }
+Write-Host "NASM: $nasmPath" -ForegroundColor DarkGray
 
-# --- Optional C compiler detection ----------------------------------------
-# RushOS is split into modular .asm files. C support requires an ia16-elf-gcc
-# cross-compiler capable of producing 16-bit real-mode flat binary code.
-# Install guide: https://github.com/tkchia/gcc-ia16 (build from source)
-# or use OpenWatcom: https://github.com/open-watcom/open-watcom-v2
-# When a compatible compiler is found, .c files in src/ will be compiled and
-# the resulting flat binary appended before the data section.
-$cCompiler = @("ia16-elf-gcc", "owcc", "wcc") |
-    ForEach-Object { Get-Command $_ -ErrorAction SilentlyContinue } |
-    Select-Object -First 1
-if ($cCompiler) {
-    Write-Host "C compiler found: $($cCompiler.Name)  -  C modules will be compiled." -ForegroundColor Cyan
-    $cSources = Get-ChildItem -Recurse -Filter "*.c" -Path (Join-Path $projectRoot "src")
-    foreach ($cs in $cSources) {
-        Write-Host "  Compiling $($cs.Name)..."
-        # ia16-elf-gcc: produce flat binary object, link manually
-        # (exact flags depend on toolchain; adjust as toolchain is set up)
+# ---- Find Clang (LLVM) ----------------------------------------------------
+$clangPath = $null
+$clangCmd = Get-Command clang -ErrorAction SilentlyContinue
+if ($clangCmd) { $clangPath = $clangCmd.Source }
+else {
+    $candidate = Join-Path $env:ProgramFiles "LLVM\bin\clang.exe"
+    if (Test-Path $candidate) { $clangPath = $candidate }
+}
+if (-not $clangPath) {
+    throw "Clang not found. Install: winget install --id LLVM.LLVM -e"
+}
+Write-Host "Clang: $clangPath" -ForegroundColor DarkGray
+
+# ---- Find ld.lld and llvm-objcopy (same dir as clang) ---------------------
+$llvmBinDir = Split-Path $clangPath
+$lldPath    = Join-Path $llvmBinDir "ld.lld.exe"
+$objcopyPath = Join-Path $llvmBinDir "llvm-objcopy.exe"
+
+if (-not (Test-Path $lldPath))     { throw "ld.lld not found in $llvmBinDir" }
+if (-not (Test-Path $objcopyPath)) { throw "llvm-objcopy not found in $llvmBinDir" }
+
+# ---- Collect C source files -----------------------------------------------
+$cSources = Get-ChildItem -Recurse -Filter "*.c" -Path $srcDir
+
+Write-Host ""
+Write-Host "=== RushOS Build (C + ASM, 32-bit Protected Mode) ===" -ForegroundColor Cyan
+Write-Host ""
+
+# ---- Step 1: Assemble kernel entry (ELF32 object) -------------------------
+Write-Host "  [ASM] entry.asm" -ForegroundColor Yellow
+$entryObj = Join-Path $buildDir "entry.o"
+$null = & $nasmPath -f elf32 $entrySource -o $entryObj 2>&1
+if ($LASTEXITCODE -ne 0) { throw "NASM failed on entry.asm" }
+
+# ---- Step 2: Compile all C files ------------------------------------------
+$cFlags = @(
+    "--target=i386-none-elf",
+    "-ffreestanding",
+    "-nostdlib",
+    "-fno-stack-protector",
+    "-fno-pie",
+    "-O2",
+    "-Wall",
+    "-Wextra",
+    "-I$includeDir",
+    "-c"
+)
+
+$objFiles = @($entryObj)
+
+foreach ($cs in $cSources) {
+    $objName = [System.IO.Path]::GetFileNameWithoutExtension($cs.Name) + ".o"
+    $objPath = Join-Path $buildDir $objName
+    Write-Host "  [CC]  $($cs.Name)" -ForegroundColor Yellow
+    $clangOutput = & $clangPath @cFlags $cs.FullName -o $objPath 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        $clangOutput | ForEach-Object { Write-Host $_ }
+        throw "Clang failed on $($cs.Name)"
     }
-} else {
-    Write-Host "No 16-bit C compiler found. Assembly-only build (this is fine)." -ForegroundColor DarkGray
-    Write-Host "  To add C: install ia16-elf-gcc or OpenWatcom (see scripts/build.ps1 comment)." -ForegroundColor DarkGray
+    $objFiles += $objPath
 }
-# ---------------------------------------------------------------------------
 
-& $nasmPath -f bin $kernelSource -o $kernelBin
+# ---- Step 3: Link into ELF ------------------------------------------------
+Write-Host "  [LD]  kernel.elf" -ForegroundColor Yellow
+$lldOutput = & $lldPath -T $linkerScript -nostdlib -o $kernelElf @objFiles 2>&1
+if ($LASTEXITCODE -ne 0) {
+    $lldOutput | ForEach-Object { Write-Host $_ }
+    throw "ld.lld failed to link kernel"
+}
 
+# ---- Step 4: Convert ELF to flat binary -----------------------------------
+Write-Host "  [BIN] kernel.bin" -ForegroundColor Yellow
+$null = & $objcopyPath -O binary $kernelElf $kernelBin 2>&1
+if ($LASTEXITCODE -ne 0) { throw "llvm-objcopy failed" }
+
+# ---- Step 5: Calculate kernel size ----------------------------------------
 $kernelBytes = [System.IO.File]::ReadAllBytes($kernelBin)
 $kernelSectors = [int][Math]::Ceiling($kernelBytes.Length / 512.0)
-if ($kernelSectors -lt 1) {
-    $kernelSectors = 1
-}
+if ($kernelSectors -lt 1) { $kernelSectors = 1 }
 
 if ($kernelBytes.Length -gt $maxKernelBytes) {
-    throw "Kernel is too large ($($kernelBytes.Length) bytes). Max is $maxKernelBytes bytes ($maxKernelSectors sectors)."
+    throw "Kernel too large ($($kernelBytes.Length) bytes). Max: $maxKernelBytes bytes."
 }
 
-& $nasmPath -f bin $bootSource -o $bootBin "-DKERNEL_SECTORS=$kernelSectors"
+# ---- Step 6: Assemble boot sector (with KERNEL_SECTORS) -------------------
+Write-Host "  [ASM] boot.asm (sectors=$kernelSectors)" -ForegroundColor Yellow
+$null = & $nasmPath -f bin $bootSource -o $bootBin "-DKERNEL_SECTORS=$kernelSectors" 2>&1
+if ($LASTEXITCODE -ne 0) { throw "NASM failed on boot.asm" }
 
 $bootBytes = [System.IO.File]::ReadAllBytes($bootBin)
 if ($bootBytes.Length -ne 512) {
-    throw "Bootloader must be exactly 512 bytes. Current size: $($bootBytes.Length) bytes."
+    throw "Boot sector must be 512 bytes (got $($bootBytes.Length))."
 }
 
+# ---- Step 7: Build floppy image -------------------------------------------
+Write-Host "  [IMG] Heatos.img" -ForegroundColor Yellow
 $disk = New-Object byte[] $floppyImageBytes
 [System.Array]::Copy($bootBytes, 0, $disk, 0, $bootBytes.Length)
 [System.Array]::Copy($kernelBytes, 0, $disk, 512, $kernelBytes.Length)
-
 [System.IO.File]::WriteAllBytes($imagePath, $disk)
 
+# ---- Optional: ISO ---------------------------------------------------------
 if (-not $SkipIso) {
     $isoTool = $null
-
     foreach ($candidate in @("xorriso", "mkisofs", "genisoimage")) {
         $found = Get-Command $candidate -ErrorAction SilentlyContinue
-        if ($found) {
-            $isoTool = $found
-            break
-        }
+        if ($found) { $isoTool = $found; break }
     }
-
     if ($isoTool) {
-        if (Test-Path $isoPath) {
-            Remove-Item $isoPath -Force
-        }
-
+        if (Test-Path $isoPath) { Remove-Item $isoPath -Force }
         if ($isoTool.Name -ieq "xorriso") {
-            & $isoTool.Source -as mkisofs -quiet -V "HEATOS" -o $isoPath -b "Heatos.img" -c "boot.cat" $buildDir
+            & $isoTool.Source -as mkisofs -quiet -V "RUSHOS" -o $isoPath -b "Heatos.img" -c "boot.cat" $buildDir
+        } else {
+            & $isoTool.Source -quiet -V "RUSHOS" -o $isoPath -b "Heatos.img" -c "boot.cat" $buildDir
         }
-        else {
-            & $isoTool.Source -quiet -V "HEATOS" -o $isoPath -b "Heatos.img" -c "boot.cat" $buildDir
-        }
-    }
-    else {
-        Write-Host "ISO tool not found (xorriso/mkisofs/genisoimage). Skipping ISO creation." -ForegroundColor Yellow
+    } else {
+        Write-Host "  ISO tool not found (skipping)." -ForegroundColor DarkGray
     }
 }
 
-Write-Host "Build successful."
-Write-Host "Bootloader: $bootBin"
-Write-Host "Kernel:     $kernelBin"
-Write-Host "Sectors:    $kernelSectors"
-Write-Host "Disk image: $imagePath"
+# ---- Done ------------------------------------------------------------------
+Write-Host ""
+Write-Host "Build successful!" -ForegroundColor Green
+Write-Host "  Boot:   $bootBin"
+Write-Host "  Kernel: $kernelBin ($($kernelBytes.Length) bytes, $kernelSectors sectors)"
+Write-Host "  Image:  $imagePath"
+if (Test-Path $isoPath) { Write-Host "  ISO:    $isoPath" }
 
-if (Test-Path $isoPath) {
-    Write-Host "ISO image:  $isoPath"
-}
 }
 catch {
     Write-Host ""
