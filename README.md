@@ -1,4 +1,6 @@
-# RushOS
+# RushOS, OS made only using VSC agent.
+
+### yes even the README is ai :D
 
 A tiny educational operating system project with a **custom kernel** and bootloader, written in x86 assembly.
 
