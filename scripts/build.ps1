@@ -1,3 +1,7 @@
+param(
+    [switch]$SkipIso
+)
+
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
@@ -36,6 +40,7 @@ $kernelSource = Join-Path $projectRoot "src\kernel\kernel.asm"
 $bootBin = Join-Path $buildDir "boot.bin"
 $kernelBin = Join-Path $buildDir "kernel.bin"
 $imagePath = Join-Path $buildDir "Heatos.img"
+$isoPath = Join-Path $buildDir "Heatos.iso"
 
 $maxKernelSectors = 128
 $maxKernelBytes = 512 * $maxKernelSectors
@@ -85,11 +90,43 @@ $disk = New-Object byte[] $floppyImageBytes
 
 [System.IO.File]::WriteAllBytes($imagePath, $disk)
 
+if (-not $SkipIso) {
+    $isoTool = $null
+
+    foreach ($candidate in @("xorriso", "mkisofs", "genisoimage")) {
+        $found = Get-Command $candidate -ErrorAction SilentlyContinue
+        if ($found) {
+            $isoTool = $found
+            break
+        }
+    }
+
+    if ($isoTool) {
+        if (Test-Path $isoPath) {
+            Remove-Item $isoPath -Force
+        }
+
+        if ($isoTool.Name -ieq "xorriso") {
+            & $isoTool.Source -as mkisofs -quiet -V "HEATOS" -o $isoPath -b "Heatos.img" -c "boot.cat" $buildDir
+        }
+        else {
+            & $isoTool.Source -quiet -V "HEATOS" -o $isoPath -b "Heatos.img" -c "boot.cat" $buildDir
+        }
+    }
+    else {
+        Write-Host "ISO tool not found (xorriso/mkisofs/genisoimage). Skipping ISO creation." -ForegroundColor Yellow
+    }
+}
+
 Write-Host "Build successful."
 Write-Host "Bootloader: $bootBin"
 Write-Host "Kernel:     $kernelBin"
 Write-Host "Sectors:    $kernelSectors"
 Write-Host "Disk image: $imagePath"
+
+if (Test-Path $isoPath) {
+    Write-Host "ISO image:  $isoPath"
+}
 }
 catch {
     Write-Host ""

@@ -4,6 +4,10 @@
 
 A tiny educational operating system project with a **custom kernel** and bootloader, written in x86 assembly.
 
+The project now separates concerns more clearly:
+- **Kernel layer**: hardware-level services (boot/runtime state, PCI scan, timing, memory stats).
+- **OS layer**: the **Popeye** desktop environment plus terminal apps/commands.
+
 It now boots into a **desktop-style text-mode environment** with built-in apps and an integrated terminal.
 
 Desktop apps:
@@ -12,6 +16,7 @@ Desktop apps:
 - `Files`
 - `Notes`
 - `Clock`
+- `Network`
 - `Power`
 
 Terminal commands:
@@ -28,8 +33,11 @@ Terminal commands:
 - `status`
 - `history`
 - `repeat`
+- `net`
+- `ping <host>` (loopback implemented)
+- `arch`
 - `apps`
-- `desktop` / `gui`
+- `desktop` / `gui` / `popeye`
 - `banner`
 - `beep`
 - `halt` / `shutdown`
@@ -40,9 +48,9 @@ No Visual Studio 2022 is required.
 ## What This Project Contains
 
 - `src/boot/boot.asm`: 512-byte boot sector that loads your kernel.
-- `src/kernel/kernel.asm`: your custom kernel entry, desktop shell, and terminal.
-- `scripts/build.ps1`: assembles and creates a bootable floppy image.
-- `scripts/run.ps1`: builds (unless `-SkipBuild`) and runs in QEMU.
+- `src/kernel/kernel.asm`: kernel services + Popeye desktop + integrated terminal.
+- `scripts/build.ps1`: assembles image and attempts ISO generation when an ISO tool exists.
+- `scripts/run.ps1`: builds (unless `-SkipBuild`) and runs in QEMU (floppy or ISO).
 - `build.cmd` / `run.cmd`: Windows wrappers that bypass PowerShell execution-policy issues.
 
 ## Requirements (Windows)
@@ -51,6 +59,7 @@ No Visual Studio 2022 is required.
 2. PowerShell
 3. NASM assembler
 4. QEMU emulator
+5. Optional for ISO builds: `xorriso` / `mkisofs` / `genisoimage`
 
 Install dependencies with `winget`:
 
@@ -60,6 +69,12 @@ winget install --id SoftwareFreedomConservancy.QEMU -e --accept-package-agreemen
 ```
 
 After install, close and reopen your terminal.
+
+Optional ISO tool example:
+
+```powershell
+winget search xorriso
+```
 
 ## Build and Run
 
@@ -81,7 +96,8 @@ Set-ExecutionPolicy -Scope Process Bypass
 That command will:
 1. Assemble `boot.asm` and `kernel.asm`
 2. Create `build\Heatos.img`
-3. Boot the image in QEMU
+3. Try to create `build\Heatos.iso` if an ISO tool is installed
+4. Boot the image in QEMU
 
 If you only want to build:
 
@@ -101,21 +117,28 @@ If you already built once and only want to run:
 .\scripts\run.ps1 -SkipBuild
 ```
 
+Boot as ISO (if `build\Heatos.iso` exists):
+
+```powershell
+.\scripts\run.ps1 -BootIso
+```
+
 ## Using HeatOS
 
 When QEMU starts, you should see a desktop heading like:
 
 ```text
-HeatOS Desktop Environment
+Popeye Desktop Environment
 ```
 
 Try:
 - Use `Up` / `Down` to move between desktop apps.
 - Press `Enter` to launch the selected app.
-- Press `1` through `6` for quick launch.
+- Press `1` through `7` for quick launch.
+- Use mouse click on app rows when mouse services are available.
 - Press `F1` for desktop help.
-- Open `Terminal`, then use `desktop` to return to the desktop.
-- In the terminal, try `status`, `apps`, `history`, and `uptime`.
+- Open `Terminal`, then use `desktop` / `gui` / `popeye` to return to desktop.
+- In terminal, try `status`, `net`, `ping 127.0.0.1`, and `arch`.
 
 ## Troubleshooting
 
@@ -125,6 +148,9 @@ Try:
 - `qemu-system-i386 was not found`:
   - Reopen terminal after QEMU install.
   - Verify with `qemu-system-i386 --version`.
+- `Heatos.iso` missing when using `-BootIso`:
+  - Install `xorriso` / `mkisofs` / `genisoimage`.
+  - Run `build.cmd` again.
 - Script execution blocked:
   - Run `Set-ExecutionPolicy -Scope Process Bypass` in that terminal session.
   - Or use `run.cmd` / `build.cmd`, which already launch PowerShell with `-ExecutionPolicy Bypass`.
@@ -132,7 +158,8 @@ Try:
 ## Project Notes
 
 - This is a real-mode (16-bit) educational kernel, intentionally minimal.
-- The desktop environment is an early text-mode desktop shell, not a full graphical compositor yet.
+- Popeye desktop is an early text-mode desktop shell, not a full graphical compositor yet.
+- QEMU run path now enables a NIC by default (`-nic user,model=ne2k_pci`) for network diagnostics.
 - The build script auto-calculates how many sectors to load for the current kernel size.
 - The current size limit is 128 sectors (64 KiB), controlled in `scripts/build.ps1` by `maxKernelSectors`.
 - The bootloader now reads across floppy tracks instead of assuming the kernel fits on the first one.

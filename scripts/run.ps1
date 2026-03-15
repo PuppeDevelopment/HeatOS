@@ -1,5 +1,7 @@
 param(
-    [switch]$SkipBuild
+    [switch]$SkipBuild,
+    [switch]$BootIso,
+    [switch]$NoNetwork
 )
 
 $ErrorActionPreference = "Stop"
@@ -32,6 +34,7 @@ function Pause-IfNeeded {
 try {
     $projectRoot = Split-Path -Parent $PSScriptRoot
     $imagePath = Join-Path $projectRoot "build\Heatos.img"
+    $isoPath = Join-Path $projectRoot "build\Heatos.iso"
 
     if (-not $SkipBuild) {
         & (Join-Path $PSScriptRoot "build.ps1")
@@ -41,7 +44,12 @@ try {
         }
     }
 
-    if (-not (Test-Path $imagePath)) {
+    if ($BootIso) {
+        if (-not (Test-Path $isoPath)) {
+            throw "ISO image not found: $isoPath. Build with an ISO tool available (xorriso/mkisofs/genisoimage) or run without -BootIso."
+        }
+    }
+    elseif (-not (Test-Path $imagePath)) {
         throw "Disk image not found: $imagePath"
     }
 
@@ -71,8 +79,23 @@ try {
         throw "qemu-system-i386 was not found. Install with: winget install --id SoftwareFreedomConservancy.QEMU -e --accept-package-agreements --accept-source-agreements, then reopen your terminal."
     }
 
+    $qemuArgs = @()
+
+    if ($BootIso) {
+        $qemuArgs += @("-cdrom", $isoPath, "-boot", "d")
+    }
+    else {
+        $qemuArgs += @("-drive", "file=$imagePath,format=raw,if=floppy", "-boot", "a")
+    }
+
+    $qemuArgs += @("-m", "64M")
+
+    if (-not $NoNetwork) {
+        $qemuArgs += @("-nic", "user,model=ne2k_pci")
+    }
+
     $global:LASTEXITCODE = 0
-    & $qemuPath -drive "file=$imagePath,format=raw,if=floppy" -boot a -m 64M
+    & $qemuPath @qemuArgs
 
     if ($LASTEXITCODE -ne $null -and $LASTEXITCODE -ne 0) {
         throw "QEMU exited with code $LASTEXITCODE."

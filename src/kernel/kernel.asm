@@ -8,14 +8,18 @@ HISTORY_ENTRY_SIZE equ INPUT_MAX + 1
 DAY_TICKS_HI equ 0x0018
 DAY_TICKS_LO equ 0x00B0
 VIDEO_SEGMENT equ 0xB800
-DESKTOP_APP_COUNT equ 6
+DESKTOP_APP_COUNT equ 7
 
 APP_TERMINAL equ 0
 APP_SYSTEM equ 1
 APP_FILES equ 2
 APP_NOTES equ 3
 APP_CLOCK equ 4
-APP_POWER equ 5
+APP_NETWORK equ 5
+APP_POWER equ 6
+
+BOOT_MODE_DESKTOP equ 0
+BOOT_MODE_CONSOLE equ 1
 
 start:
     cli
@@ -32,16 +36,28 @@ start:
     mov [boot_drive], dl
     mov [kernel_sectors], cl
     mov byte [desktop_selection], APP_TERMINAL
+    mov byte [boot_mode], BOOT_MODE_DESKTOP
 
     call capture_boot_ticks
+    call init_mouse
+    call init_network_subsystem
+    call boot_mode_menu
+
+    cmp byte [boot_mode], BOOT_MODE_CONSOLE
+    jne desktop_main
+    call terminal_session
     jmp desktop_main
 
 desktop_main:
     call set_text_mode
+    call show_mouse_cursor_if_available
 
 .desktop_loop:
     call render_desktop_home
-    call wait_key
+    call wait_desktop_input
+
+    cmp byte [event_type], 2
+    je .open_selected
 
     cmp ah, 0x48
     je .move_up
@@ -66,6 +82,8 @@ desktop_main:
     cmp al, '5'
     je .shortcut_clock
     cmp al, '6'
+    je .shortcut_network
+    cmp al, '7'
     je .shortcut_power
 
     cmp al, 't'
@@ -88,6 +106,10 @@ desktop_main:
     je .shortcut_clock
     cmp al, 'C'
     je .shortcut_clock
+    cmp al, 'w'
+    je .shortcut_network
+    cmp al, 'W'
+    je .shortcut_network
     cmp al, 'p'
     je .shortcut_power
     cmp al, 'P'
@@ -116,7 +138,9 @@ desktop_main:
     jmp .desktop_loop
 
 .show_help:
+    call hide_mouse_cursor_if_visible
     call desktop_help_app
+    call show_mouse_cursor_if_available
     jmp .desktop_loop
 
 .open_selected:
@@ -125,70 +149,90 @@ desktop_main:
 
 .open_power:
     mov byte [desktop_selection], APP_POWER
-    call power_app
+    call open_desktop_app
     jmp .desktop_loop
 
 .shortcut_terminal:
     mov byte [desktop_selection], APP_TERMINAL
-    call terminal_session
+    call open_desktop_app
     jmp .desktop_loop
 
 .shortcut_system:
     mov byte [desktop_selection], APP_SYSTEM
-    call system_app
+    call open_desktop_app
     jmp .desktop_loop
 
 .shortcut_files:
     mov byte [desktop_selection], APP_FILES
-    call files_app
+    call open_desktop_app
     jmp .desktop_loop
 
 .shortcut_notes:
     mov byte [desktop_selection], APP_NOTES
-    call notes_app
+    call open_desktop_app
     jmp .desktop_loop
 
 .shortcut_clock:
     mov byte [desktop_selection], APP_CLOCK
-    call clock_app
+    call open_desktop_app
+    jmp .desktop_loop
+
+.shortcut_network:
+    mov byte [desktop_selection], APP_NETWORK
+    call open_desktop_app
     jmp .desktop_loop
 
 .shortcut_power:
     mov byte [desktop_selection], APP_POWER
-    call power_app
+    call open_desktop_app
     jmp .desktop_loop
 
 open_desktop_app:
+    call hide_mouse_cursor_if_visible
+
     cmp byte [desktop_selection], APP_TERMINAL
-    je .open_terminal
+    je .run_terminal
     cmp byte [desktop_selection], APP_SYSTEM
-    je .open_system
+    je .run_system
     cmp byte [desktop_selection], APP_FILES
-    je .open_files
+    je .run_files
     cmp byte [desktop_selection], APP_NOTES
-    je .open_notes
+    je .run_notes
     cmp byte [desktop_selection], APP_CLOCK
-    je .open_clock
-    jmp power_app
+    je .run_clock
+    cmp byte [desktop_selection], APP_NETWORK
+    je .run_network
+    jmp .run_power
 
-.open_terminal:
+.run_terminal:
     call terminal_session
-    ret
+    jmp .done
 
-.open_system:
+.run_system:
     call system_app
-    ret
+    jmp .done
 
-.open_files:
+.run_files:
     call files_app
-    ret
+    jmp .done
 
-.open_notes:
+.run_notes:
     call notes_app
-    ret
+    jmp .done
 
-.open_clock:
+.run_clock:
     call clock_app
+    jmp .done
+
+.run_network:
+    call network_app
+    jmp .done
+
+.run_power:
+    call power_app
+
+.done:
+    call show_mouse_cursor_if_available
     ret
 
 desktop_help_app:
@@ -287,6 +331,33 @@ clock_app:
     je .terminal
     cmp al, 'T'
     je .terminal
+    jmp .loop
+
+.terminal:
+    call terminal_session
+.done:
+    ret
+
+network_app:
+.loop:
+    call render_network_app
+    call wait_key
+    cmp al, 27
+    je .done
+    cmp al, 13
+    je .done
+    cmp al, 'r'
+    je .refresh
+    cmp al, 'R'
+    je .refresh
+    cmp al, 't'
+    je .terminal
+    cmp al, 'T'
+    je .terminal
+    jmp .loop
+
+.refresh:
+    call init_network_subsystem
     jmp .loop
 
 .terminal:
@@ -417,8 +488,13 @@ render_desktop_home:
     mov si, desktop_app_clock_msg
     call render_app_entry
 
-    mov al, APP_POWER
+    mov al, APP_NETWORK
     mov dh, 15
+    mov si, desktop_app_network_msg
+    call render_app_entry
+
+    mov al, APP_POWER
+    mov dh, 17
     mov si, desktop_app_power_msg
     call render_app_entry
 
@@ -440,6 +516,18 @@ render_desktop_home:
     mov dl, 2
     mov bl, 0x70
     mov si, desktop_footer_line2_msg
+    call write_string_at
+
+    mov dh, 24
+    mov dl, 62
+    mov bl, 0x70
+    cmp byte [mouse_available], 1
+    jne .mouse_off
+    mov si, desktop_mouse_on_msg
+    jmp .mouse_done
+.mouse_off:
+    mov si, desktop_mouse_off_msg
+.mouse_done:
     call write_string_at
     ret
 
@@ -483,6 +571,8 @@ render_desktop_preview:
     je .notes
     cmp byte [desktop_selection], APP_CLOCK
     je .clock
+    cmp byte [desktop_selection], APP_NETWORK
+    je .network
     jmp .power
 
 .terminal:
@@ -570,6 +660,23 @@ render_desktop_preview:
     call write_string_at
     jmp .common
 
+.network:
+    mov dh, 6
+    mov dl, 27
+    mov bl, 0x1F
+    mov si, preview_network_title_msg
+    call write_string_at
+    mov dh, 8
+    mov si, preview_network_line1_msg
+    call write_string_at
+    mov dh, 9
+    mov si, preview_network_line2_msg
+    call write_string_at
+    mov dh, 10
+    mov si, preview_network_line3_msg
+    call write_string_at
+    jmp .common
+
 .power:
     mov dh, 6
     mov dl, 27
@@ -630,6 +737,14 @@ render_desktop_preview:
     call write_string_at
     mov dl, 60
     mov si, time_buffer
+    call write_string_at
+
+    mov dh, 19
+    mov dl, 27
+    mov si, desktop_network_label_msg
+    call write_string_at
+    mov dl, 48
+    mov si, network_status_buffer
     call write_string_at
 
     mov dh, 20
@@ -836,6 +951,78 @@ render_clock_app:
     call write_string_at
     ret
 
+render_network_app:
+    call build_network_strings
+    mov si, app_network_title_msg
+    call render_standard_app_layout
+
+    mov dh, 4
+    mov dl, 8
+    mov bl, 0x17
+    mov si, network_heading_msg
+    call write_string_at
+
+    mov dh, 6
+    mov dl, 8
+    mov si, network_status_label_msg
+    call write_string_at
+    mov dl, 28
+    mov si, network_status_buffer
+    call write_string_at
+
+    mov dh, 7
+    mov dl, 8
+    mov si, network_slot_label_msg
+    call write_string_at
+    mov dl, 28
+    mov si, net_slot_buffer
+    call write_string_at
+
+    mov dh, 8
+    mov dl, 8
+    mov si, network_vendor_label_msg
+    call write_string_at
+    mov dl, 28
+    mov si, net_vendor_buffer
+    call write_string_at
+
+    mov dh, 9
+    mov dl, 8
+    mov si, network_device_label_msg
+    call write_string_at
+    mov dl, 28
+    mov si, net_device_buffer
+    call write_string_at
+
+    mov dh, 10
+    mov dl, 8
+    mov si, network_class_label_msg
+    call write_string_at
+    mov dl, 28
+    mov si, net_class_buffer
+    call write_string_at
+    mov dl, 31
+    mov si, slash_msg
+    call write_string_at
+    mov dl, 32
+    mov si, net_subclass_buffer
+    call write_string_at
+
+    mov dh, 12
+    mov dl, 8
+    mov si, network_note_line1_msg
+    call write_string_at
+    mov dh, 13
+    mov si, network_note_line2_msg
+    call write_string_at
+    mov dh, 14
+    mov si, network_note_line3_msg
+    call write_string_at
+    mov dh, 16
+    mov si, network_note_line4_msg
+    call write_string_at
+    ret
+
 render_power_app:
     mov dh, 0
     mov dl, 0
@@ -982,6 +1169,7 @@ render_standard_app_layout:
     ret
 
 terminal_session:
+    call hide_mouse_cursor_if_visible
     call clear_screen
     call print_banner
     mov si, terminal_ready_msg
@@ -1122,6 +1310,24 @@ dispatch_command:
     je do_repeat
 
     mov si, command_buffer
+    mov di, cmd_net
+    call string_equals
+    cmp al, 1
+    je show_net
+
+    mov si, command_buffer
+    mov di, cmd_ping
+    call string_equals
+    cmp al, 1
+    je do_ping
+
+    mov si, command_buffer
+    mov di, cmd_arch
+    call string_equals
+    cmp al, 1
+    je show_arch
+
+    mov si, command_buffer
     mov di, cmd_apps
     call string_equals
     cmp al, 1
@@ -1135,6 +1341,12 @@ dispatch_command:
 
     mov si, command_buffer
     mov di, cmd_gui
+    call string_equals
+    cmp al, 1
+    je leave_to_desktop
+
+    mov si, command_buffer
+    mov di, cmd_popeye
     call string_equals
     cmp al, 1
     je leave_to_desktop
@@ -1415,6 +1627,88 @@ show_apps:
     call print_string
     jmp shell_loop
 
+show_net:
+    call build_network_strings
+    mov si, net_console_header_msg
+    call print_string
+    mov si, net_console_state_label_msg
+    call print_string
+    mov si, network_status_buffer
+    call print_string
+    call print_newline
+
+    cmp byte [net_present], 1
+    jne .missing
+
+    mov si, net_console_slot_label_msg
+    call print_string
+    mov si, net_slot_buffer
+    call print_string
+    call print_newline
+
+    mov si, net_console_vendor_label_msg
+    call print_string
+    mov si, net_vendor_buffer
+    call print_string
+    mov si, net_console_device_mid_msg
+    call print_string
+    mov si, net_device_buffer
+    call print_string
+    call print_newline
+
+    mov si, net_console_class_label_msg
+    call print_string
+    mov si, net_class_buffer
+    call print_string
+    mov si, slash_msg
+    call print_string
+    mov si, net_subclass_buffer
+    call print_string
+    call print_newline
+
+    mov si, net_console_hint_msg
+    call print_string
+    jmp shell_loop
+
+.missing:
+    mov si, net_console_missing_msg
+    call print_string
+    jmp shell_loop
+
+do_ping:
+    mov si, [args_ptr]
+    cmp byte [si], 0
+    jne .has_target
+    mov si, ping_usage_msg
+    call print_string
+    jmp shell_loop
+
+.has_target:
+    mov di, ping_loopback_target_msg
+    call string_equals
+    cmp al, 1
+    je .loopback
+
+    mov si, [args_ptr]
+    mov di, ping_localhost_target_msg
+    call string_equals
+    cmp al, 1
+    je .loopback
+
+    mov si, ping_stub_msg
+    call print_string
+    jmp shell_loop
+
+.loopback:
+    mov si, ping_reply_msg
+    call print_string
+    jmp shell_loop
+
+show_arch:
+    mov si, arch_msg
+    call print_string
+    jmp shell_loop
+
 leave_to_desktop:
     mov si, returning_to_desktop_msg
     call print_string
@@ -1445,6 +1739,387 @@ capture_boot_ticks:
     popa
     ret
 
+boot_mode_menu:
+    call clear_screen
+    mov si, banner_msg
+    call print_string
+    mov si, boot_menu_title_msg
+    call print_string
+    mov si, boot_menu_line1_msg
+    call print_string
+    mov si, boot_menu_line2_msg
+    call print_string
+    mov si, boot_menu_line3_msg
+    call print_string
+
+.wait:
+    mov si, boot_menu_prompt_msg
+    call print_string
+    call wait_key
+    call print_newline
+
+    cmp al, 13
+    je .desktop
+    cmp al, 'd'
+    je .desktop
+    cmp al, 'D'
+    je .desktop
+    cmp al, 'c'
+    je .console
+    cmp al, 'C'
+    je .console
+
+    mov si, boot_menu_invalid_msg
+    call print_string
+    jmp .wait
+
+.desktop:
+    mov byte [boot_mode], BOOT_MODE_DESKTOP
+    ret
+
+.console:
+    mov byte [boot_mode], BOOT_MODE_CONSOLE
+    ret
+
+init_mouse:
+    mov byte [mouse_available], 0
+    mov byte [mouse_visible], 0
+    mov byte [mouse_prev_buttons], 0
+
+    xor ax, ax
+    mov es, ax
+    mov bx, 0x00CC
+    mov ax, [es:bx]
+    or ax, [es:bx + 2]
+    jz .done
+
+    mov ax, 0x0000
+    int 0x33
+    cmp ax, 0
+    je .done
+
+    mov byte [mouse_available], 1
+.done:
+    ret
+
+show_mouse_cursor_if_available:
+    cmp byte [mouse_available], 1
+    jne .done
+    cmp byte [mouse_visible], 1
+    je .done
+    mov ax, 0x0001
+    int 0x33
+    mov byte [mouse_visible], 1
+.done:
+    ret
+
+hide_mouse_cursor_if_visible:
+    cmp byte [mouse_available], 1
+    jne .done
+    cmp byte [mouse_visible], 1
+    jne .done
+    mov ax, 0x0002
+    int 0x33
+    mov byte [mouse_visible], 0
+.done:
+    ret
+
+wait_desktop_input:
+.loop:
+    call poll_mouse_event
+    cmp al, 1
+    je .mouse_event
+
+    mov ah, 0x01
+    int 0x16
+    jz .loop
+
+    xor ah, ah
+    int 0x16
+    mov byte [event_type], 1
+    ret
+
+.mouse_event:
+    mov byte [event_type], 2
+    ret
+
+poll_mouse_event:
+    push bx
+    push cx
+    push dx
+
+    xor al, al
+    cmp byte [mouse_available], 1
+    jne .done
+
+    mov ax, 0x0003
+    int 0x33
+
+    mov ax, cx
+    shr ax, 3
+    cmp ax, 79
+    jbe .col_ok
+    mov ax, 79
+.col_ok:
+    mov [mouse_col], al
+
+    mov ax, dx
+    shr ax, 3
+    cmp ax, 24
+    jbe .row_ok
+    mov ax, 24
+.row_ok:
+    mov [mouse_row], al
+
+    mov byte [mouse_click_app], 0xFF
+
+    mov dl, [mouse_col]
+    cmp dl, 4
+    jb .check_click
+    cmp dl, 19
+    ja .check_click
+
+    mov al, [mouse_row]
+    call map_mouse_row_to_app
+    cmp al, 0xFF
+    je .check_click
+    mov [desktop_selection], al
+    mov [mouse_click_app], al
+
+.check_click:
+    mov al, [mouse_prev_buttons]
+    and al, 1
+    mov ah, bl
+    and ah, 1
+    mov [mouse_prev_buttons], bl
+
+    cmp ah, 1
+    jne .no_click
+    cmp al, 0
+    jne .no_click
+    cmp byte [mouse_click_app], 0xFF
+    je .no_click
+    mov al, 1
+    jmp .done
+
+.no_click:
+    xor al, al
+
+.done:
+    pop dx
+    pop cx
+    pop bx
+    ret
+
+map_mouse_row_to_app:
+    cmp al, 5
+    je .terminal
+    cmp al, 7
+    je .system
+    cmp al, 9
+    je .files
+    cmp al, 11
+    je .notes
+    cmp al, 13
+    je .clock
+    cmp al, 15
+    je .network
+    cmp al, 17
+    je .power
+    mov al, 0xFF
+    ret
+
+.terminal:
+    mov al, APP_TERMINAL
+    ret
+.system:
+    mov al, APP_SYSTEM
+    ret
+.files:
+    mov al, APP_FILES
+    ret
+.notes:
+    mov al, APP_NOTES
+    ret
+.clock:
+    mov al, APP_CLOCK
+    ret
+.network:
+    mov al, APP_NETWORK
+    ret
+.power:
+    mov al, APP_POWER
+    ret
+
+init_network_subsystem:
+    call detect_network_adapter
+    call build_network_strings
+    ret
+
+detect_network_adapter:
+    push ax
+    push bx
+    push cx
+    push dx
+    push eax
+    push ecx
+    push edx
+
+    mov byte [net_present], 0
+    mov byte [net_device_slot], 0
+    mov word [net_vendor_id], 0
+    mov word [net_device_id], 0
+    mov byte [net_class], 0
+    mov byte [net_subclass], 0
+
+    xor bl, bl
+
+.scan_device:
+    cmp bl, 32
+    jae .done
+
+    mov cl, 0x00
+    call pci_read_dword_bus0
+    mov edx, eax
+    cmp dx, 0xFFFF
+    je .next_device
+
+    mov cl, 0x08
+    call pci_read_dword_bus0
+    mov edx, eax
+    shr edx, 24
+    cmp dl, 0x02
+    jne .next_device
+
+    mov byte [net_present], 1
+    mov [net_device_slot], bl
+
+    mov cl, 0x00
+    call pci_read_dword_bus0
+    mov edx, eax
+    mov [net_vendor_id], dx
+    shr edx, 16
+    mov [net_device_id], dx
+
+    mov cl, 0x08
+    call pci_read_dword_bus0
+    mov edx, eax
+    shr edx, 16
+    mov [net_subclass], dl
+    mov [net_class], dh
+    jmp .done
+
+.next_device:
+    inc bl
+    jmp .scan_device
+
+.done:
+    pop edx
+    pop ecx
+    pop eax
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    ret
+
+pci_read_dword_bus0:
+    push bx
+    push cx
+    push dx
+    push edx
+
+    movzx eax, bl
+    shl eax, 11
+    movzx edx, cl
+    and edx, 0xFC
+    or eax, edx
+    or eax, 0x80000000
+
+    mov dx, 0xCF8
+    out dx, eax
+    mov dx, 0xCFC
+    in eax, dx
+
+    pop edx
+    pop dx
+    pop cx
+    pop bx
+    ret
+
+build_network_strings:
+    push ax
+    push di
+    push si
+    push es
+
+    cmp byte [net_present], 1
+    jne .offline
+
+    push ds
+    pop es
+
+    mov si, net_state_online_msg
+    mov di, network_status_buffer
+    call copy_zero_string
+
+    xor ax, ax
+    mov al, [net_device_slot]
+    mov di, net_slot_buffer
+    call word_to_decimal_string
+
+    mov ax, [net_vendor_id]
+    mov di, net_vendor_buffer
+    call word_to_hex_string
+
+    mov ax, [net_device_id]
+    mov di, net_device_buffer
+    call word_to_hex_string
+
+    mov al, [net_class]
+    mov di, net_class_buffer
+    call byte_to_hex_string
+
+    mov al, [net_subclass]
+    mov di, net_subclass_buffer
+    call byte_to_hex_string
+    jmp .done
+
+.offline:
+    push ds
+    pop es
+
+    mov si, net_state_offline_msg
+    mov di, network_status_buffer
+    call copy_zero_string
+
+    mov si, net_none_short_msg
+    mov di, net_slot_buffer
+    call copy_zero_string
+
+    mov si, net_none_word_msg
+    mov di, net_vendor_buffer
+    call copy_zero_string
+
+    mov si, net_none_word_msg
+    mov di, net_device_buffer
+    call copy_zero_string
+
+    mov si, net_none_byte_msg
+    mov di, net_class_buffer
+    call copy_zero_string
+
+    mov si, net_none_byte_msg
+    mov di, net_subclass_buffer
+    call copy_zero_string
+
+.done:
+    pop es
+    pop si
+    pop di
+    pop ax
+    ret
+
 build_desktop_stats:
     call build_date_string
     call build_time_string
@@ -1452,6 +2127,7 @@ build_desktop_stats:
     call build_kernel_sectors_string
     call build_boot_drive_string
     call build_uptime_string
+    call build_network_strings
     ret
 
 build_date_string:
@@ -1696,6 +2372,43 @@ byte_to_hex_string:
     xor al, al
     stosb
     pop es
+    pop ax
+    ret
+
+word_to_hex_string:
+    push ax
+    push bx
+    push es
+    push ds
+    pop es
+
+    mov bx, ax
+
+    mov al, bh
+    shr al, 4
+    call nibble_to_hex_ascii
+    stosb
+
+    mov al, bh
+    and al, 0x0F
+    call nibble_to_hex_ascii
+    stosb
+
+    mov al, bl
+    shr al, 4
+    call nibble_to_hex_ascii
+    stosb
+
+    mov al, bl
+    and al, 0x0F
+    call nibble_to_hex_ascii
+    stosb
+
+    xor al, al
+    stosb
+
+    pop es
+    pop bx
     pop ax
     ret
 
@@ -2373,10 +3086,10 @@ print_bcd_byte:
     ret
 
 banner_msg db "================================", 13, 10
-           db " HeatOS 0.4  desktop prototype ", 13, 10
+           db " HeatOS 0.5 + Popeye Desktop   ", 13, 10
            db "================================", 13, 10, 13, 10, 0
-terminal_ready_msg db "Terminal opened from the desktop shell.", 13, 10, 0
-terminal_hint_msg db "Try: help, status, apps, desktop", 13, 10, 13, 10, 0
+terminal_ready_msg db "Terminal opened from Popeye desktop.", 13, 10, 0
+terminal_hint_msg db "Try: help, net, ping 127.0.0.1, desktop", 13, 10, 13, 10, 0
 prompt_msg db "Heat> ", 0
 unknown_msg db "Unknown command. Type 'help'.", 13, 10, 0
 help_msg db "Commands:", 13, 10
@@ -2384,15 +3097,15 @@ help_msg db "Commands:", 13, 10
          db "  echo      banner      beep        mem", 13, 10
          db "  date      time        uptime      boot", 13, 10
          db "  status    history     repeat      apps", 13, 10
-         db "  desktop   gui         halt/shutdown", 13, 10
+         db "  net       ping        arch", 13, 10
+         db "  desktop   gui/popeye  halt/shutdown", 13, 10
          db "  reboot/restart", 13, 10
          db "Tip: press Esc while typing to clear the whole line.", 13, 10, 13, 10, 0
-about_msg db "HeatOS is still a BIOS-driven 16-bit real-mode OS,", 13, 10
-          db "but it now boots into a desktop-style workspace with", 13, 10
-          db "built-in apps, a terminal, system views, and a", 13, 10
-          db "keyboard-controlled launch surface.", 13, 10, 13, 10, 0
-version_msg db "HeatOS kernel v0.4", 13, 10
-            db "Features: desktop shell, apps, terminal, history, rtc.", 13, 10, 13, 10, 0
+about_msg db "HeatOS kernel handles hardware/services; the OS layer", 13, 10
+          db "provides Popeye desktop + terminal apps on top.", 13, 10
+          db "Still real-mode BIOS based, but now split by role.", 13, 10, 13, 10, 0
+version_msg db "HeatOS kernel v0.5", 13, 10
+            db "Features: Popeye desktop, mouse hooks, net diagnostics.", 13, 10, 13, 10, 0
 echo_usage_msg db "Usage: echo <text>", 13, 10, 0
 date_prefix_msg db "Date: ", 0
 time_prefix_msg db "Time: ", 0
@@ -2401,7 +3114,7 @@ mem_prefix_msg db "Conventional memory: ", 0
 boot_prefix_msg db "Boot info: ", 0
 status_header_msg db "System status:", 13, 10, 0
 status_version_label db "  version: ", 0
-version_name_msg db "HeatOS kernel v0.4", 0
+version_name_msg db "HeatOS kernel v0.5", 0
 status_boot_label db "  boot:    ", 0
 status_mem_label db "  memory:  ", 0
 status_date_label db "  date:    ", 0
@@ -2424,6 +3137,7 @@ apps_msg db "Desktop apps:", 13, 10
          db "  files    - placeholder file browser", 13, 10
          db "  notes    - roadmap and design notes", 13, 10
          db "  clock    - RTC date/time view", 13, 10
+         db "  network  - PCI NIC diagnostics + ping stub", 13, 10
          db "  power    - halt or reboot", 13, 10, 13, 10, 0
 returning_to_desktop_msg db "Returning to the desktop...", 13, 10, 0
 halt_msg db "System halted.", 13, 10, 0
@@ -2436,7 +3150,7 @@ boot_inline_b db ", kernel ", 0
 boot_inline_c db " sectors / ", 0
 boot_inline_d db " bytes", 0
 
-desktop_top_title_msg db "HeatOS Desktop Environment", 0
+desktop_top_title_msg db "Popeye Desktop Environment", 0
 desktop_apps_header_msg db "Apps", 0
 desktop_workspace_header_msg db "Workspace", 0
 desktop_app_terminal_msg db "1  Terminal", 0
@@ -2444,16 +3158,20 @@ desktop_app_system_msg db "2  System", 0
 desktop_app_files_msg db "3  Files", 0
 desktop_app_notes_msg db "4  Notes", 0
 desktop_app_clock_msg db "5  Clock", 0
-desktop_app_power_msg db "6  Power", 0
-desktop_footer_line1_msg db "Up/Down move  Enter launch  1-6 quick open  F1 help", 0
-desktop_footer_line2_msg db "T/S/F/N/C/P jump  Esc power  Desktop is keyboard-first for now", 0
+desktop_app_network_msg db "6  Network", 0
+desktop_app_power_msg db "7  Power", 0
+desktop_footer_line1_msg db "Up/Down move  Enter launch  1-7 quick open  F1 help", 0
+desktop_footer_line2_msg db "T/S/F/N/C/W/P jump  Esc power  click app names with mouse", 0
 desktop_quick_header_msg db "Quick status", 0
 desktop_memory_label_msg db "Memory", 0
 desktop_kernel_label_msg db "Kernel sectors", 0
 desktop_boot_label_msg db "Boot drive", 0
 desktop_clock_label_msg db "Clock", 0
+desktop_network_label_msg db "Network", 0
 desktop_launch_hint_msg db "Press Enter to launch the selected app.", 0
 desktop_kb_msg db "KB", 0
+desktop_mouse_on_msg db "Mouse ON", 0
+desktop_mouse_off_msg db "Mouse OFF", 0
 
 preview_terminal_title_msg db "Terminal", 0
 preview_terminal_line1_msg db "Open the integrated shell for commands, status, history, and uptime.", 0
@@ -2475,6 +3193,10 @@ preview_clock_title_msg db "Clock", 0
 preview_clock_line1_msg db "Shows RTC date/time plus uptime from BIOS timer ticks.", 0
 preview_clock_line2_msg db "Useful for checking that the kernel is keeping sane runtime state.", 0
 preview_clock_line3_msg db "Refresh the screen whenever you want a fresh timestamp.", 0
+preview_network_title_msg db "Network", 0
+preview_network_line1_msg db "Scans PCI for NIC class devices and reports adapter identity.", 0
+preview_network_line2_msg db "Run with QEMU -nic user,model=ne2k_pci for predictable testing.", 0
+preview_network_line3_msg db "Terminal also includes net + ping diagnostics commands.", 0
 preview_power_title_msg db "Power", 0
 preview_power_line1_msg db "Shut the machine down or reboot directly from the desktop.", 0
 preview_power_line2_msg db "This is still a BIOS reboot and CPU halt path, not ACPI power-off.", 0
@@ -2484,6 +3206,7 @@ app_system_title_msg db "HeatOS System Center", 0
 app_files_title_msg db "HeatOS Files", 0
 app_notes_title_msg db "HeatOS Notes", 0
 app_clock_title_msg db "HeatOS Clock", 0
+app_network_title_msg db "HeatOS Network", 0
 app_power_title_msg db "HeatOS Power", 0
 app_help_title_msg db "HeatOS Desktop Help", 0
 app_footer_line1_msg db "Esc desktop  Enter desktop  T terminal", 0
@@ -2498,8 +3221,8 @@ system_date_label_msg db "RTC date", 0
 system_time_label_msg db "RTC time", 0
 system_uptime_label_msg db "Approx uptime", 0
 system_note_line1_msg db "This remains a single-task real-mode kernel with BIOS services.", 0
-system_note_line2_msg db "The desktop is text-mode, but the control flow now feels like an OS.", 0
-system_note_line3_msg db "Next major milestone is storage plus a real graphics pipeline.", 0
+system_note_line2_msg db "Kernel core and OS shell are now separated by responsibility.", 0
+system_note_line3_msg db "Next milestone is storage + protected mode + graphics pipeline.", 0
 
 files_heading_msg db "Virtual file layout", 0
 files_line1_msg db "/", 0
@@ -2527,6 +3250,17 @@ clock_uptime_label_msg db "Approx uptime", 0
 clock_note_line1_msg db "Press R to redraw and fetch fresh BIOS clock values.", 0
 clock_note_line2_msg db "Current uptime is derived from the BIOS tick counter since boot.", 0
 
+network_heading_msg db "Network diagnostics", 0
+network_status_label_msg db "Adapter status", 0
+network_slot_label_msg db "PCI slot (bus0)", 0
+network_vendor_label_msg db "Vendor ID", 0
+network_device_label_msg db "Device ID", 0
+network_class_label_msg db "Class/Subclass", 0
+network_note_line1_msg db "This is an early networking layer: detect + inspect + ping stub.", 0
+network_note_line2_msg db "Use run.cmd default NIC config to expose ne2k_pci in QEMU.", 0
+network_note_line3_msg db "Press R to rescan PCI network class devices.", 0
+network_note_line4_msg db "Next step: bring up a minimal packet TX/RX driver.", 0
+
 power_heading_msg db "Power control", 0
 power_line1_msg db "H  Halt the CPU", 0
 power_line2_msg db "R  Reboot through BIOS", 0
@@ -2538,12 +3272,47 @@ power_line6_msg db "It is enough to control the VM cleanly while the platform gr
 help_heading_msg db "Desktop controls", 0
 help_line1_msg db "Up/Down moves between apps in the launcher rail.", 0
 help_line2_msg db "Enter launches the selected app.", 0
-help_line3_msg db "1-6 or T/S/F/N/C/P open apps directly.", 0
+help_line3_msg db "1-7 or T/S/F/N/C/W/P open apps directly.", 0
 help_line4_msg db "Esc from the home screen jumps to the power panel.", 0
-help_line5_msg db "T inside app screens opens the integrated terminal.", 0
-help_line6_msg db "Type 'desktop' or 'gui' in the terminal to come back.", 0
-help_line7_msg db "This is a starter desktop environment, not a full graphical stack yet.", 0
-help_line8_msg db "The next step is making apps persistent with a real filesystem.", 0
+help_line5_msg db "Mouse can select and click app rows when available.", 0
+help_line6_msg db "T inside app screens opens the integrated terminal.", 0
+help_line7_msg db "Type 'desktop', 'gui', or 'popeye' in terminal to come back.", 0
+help_line8_msg db "This is a starter desktop env; graphics mode comes next.", 0
+
+boot_menu_title_msg db "Boot mode", 13, 10, 0
+boot_menu_line1_msg db "Kernel and OS shell are separate layers now.", 13, 10, 0
+boot_menu_line2_msg db "D/Enter = Popeye desktop   C = console first", 13, 10, 0
+boot_menu_line3_msg db "You can switch later using 'desktop' from terminal.", 13, 10, 13, 10, 0
+boot_menu_prompt_msg db "Select boot mode: ", 0
+boot_menu_invalid_msg db "Invalid choice. Press D, C, or Enter.", 13, 10, 0
+
+net_console_header_msg db "Network status:", 13, 10, 0
+net_console_state_label_msg db "  state: ", 0
+net_console_slot_label_msg db "  slot:  ", 0
+net_console_vendor_label_msg db "  id:    vendor 0x", 0
+net_console_device_mid_msg db "  device 0x", 0
+net_console_class_label_msg db "  class: 0x", 0
+net_console_hint_msg db "  qemu: run with NIC (run.cmd does this by default).", 13, 10, 13, 10, 0
+net_console_missing_msg db "  no PCI network adapter found.", 13, 10
+                      db "  try QEMU with -nic user,model=ne2k_pci", 13, 10, 13, 10, 0
+
+ping_usage_msg db "Usage: ping <host>. Try: ping 127.0.0.1", 13, 10, 0
+ping_stub_msg db "Only loopback ping is implemented in this stage.", 13, 10, 0
+ping_reply_msg db "Reply from 127.0.0.1: bytes=32 time<1ms ttl=255", 13, 10, 0
+ping_loopback_target_msg db "127.0.0.1", 0
+ping_localhost_target_msg db "localhost", 0
+
+arch_msg db "Architecture split:", 13, 10
+         db "  kernel: hardware init, timing, memory, pci, services", 13, 10
+         db "  os:     popeye desktop, apps, terminal command layer", 13, 10
+         db "This separation keeps low-level and user-facing logic cleaner.", 13, 10, 13, 10, 0
+
+slash_msg db "/", 0
+net_state_online_msg db "detected", 0
+net_state_offline_msg db "not-detected", 0
+net_none_short_msg db "n/a", 0
+net_none_word_msg db "----", 0
+net_none_byte_msg db "--", 0
 
 cmd_help db "help", 0
 cmd_clear db "clear", 0
@@ -2562,9 +3331,13 @@ cmd_boot db "boot", 0
 cmd_status db "status", 0
 cmd_history db "history", 0
 cmd_repeat db "repeat", 0
+cmd_net db "net", 0
+cmd_ping db "ping", 0
+cmd_arch db "arch", 0
 cmd_apps db "apps", 0
 cmd_desktop db "desktop", 0
 cmd_gui db "gui", 0
+cmd_popeye db "popeye", 0
 cmd_halt db "halt", 0
 cmd_shutdown db "shutdown", 0
 cmd_reboot db "reboot", 0
@@ -2573,6 +3346,8 @@ cmd_restart db "restart", 0
 boot_drive db 0
 kernel_sectors db 0
 desktop_selection db 0
+boot_mode db 0
+event_type db 0
 history_next db 0
 history_used db 0
 boot_ticks_hi dw 0
@@ -2580,6 +3355,20 @@ boot_ticks_lo dw 0
 args_ptr dw 0
 number_work_hi dw 0
 number_work_lo dw 0
+
+mouse_available db 0
+mouse_visible db 0
+mouse_prev_buttons db 0
+mouse_col db 0
+mouse_row db 0
+mouse_click_app db 0
+
+net_present db 0
+net_device_slot db 0
+net_class db 0
+net_subclass db 0
+net_vendor_id dw 0
+net_device_id dw 0
 
 rect_char db 0
 rect_attr db 0
@@ -2599,3 +3388,9 @@ memory_buffer times 8 db 0
 kernel_sector_buffer times 8 db 0
 boot_drive_buffer times 4 db 0
 uptime_buffer times 12 db 0
+network_status_buffer times 16 db 0
+net_slot_buffer times 8 db 0
+net_vendor_buffer times 8 db 0
+net_device_buffer times 8 db 0
+net_class_buffer times 4 db 0
+net_subclass_buffer times 4 db 0
