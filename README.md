@@ -4,21 +4,34 @@
 
 A tiny educational operating system project with a **custom kernel** and bootloader, written in x86 assembly.
 
-This starter boots into a simple kernel shell with these commands:
+This now boots into a much more capable kernel shell with commands like:
 - `help`
-- `clear`
+- `clear` / `cls`
 - `about`
-- `halt`
-- `reboot`
+- `version` / `ver`
+- `echo <text>`
+- `date`
+- `time`
+- `uptime`
+- `mem`
+- `boot`
+- `status`
+- `history`
+- `repeat`
+- `banner`
+- `beep`
+- `halt` / `shutdown`
+- `reboot` / `restart`
 
 No Visual Studio 2022 is required.
 
 ## What This Project Contains
 
 - `src/boot/boot.asm`: 512-byte boot sector that loads your kernel.
-- `src/kernel/kernel.asm`: your custom kernel entry + tiny shell.
+- `src/kernel/kernel.asm`: your custom kernel entry + expanded shell.
 - `scripts/build.ps1`: assembles and creates a bootable floppy image.
 - `scripts/run.ps1`: builds (unless `-SkipBuild`) and runs in QEMU.
+- `build.cmd` / `run.cmd`: Windows wrappers that bypass PowerShell execution-policy issues.
 
 ## Requirements (Windows)
 
@@ -40,6 +53,14 @@ After install, close and reopen your terminal.
 
 From the project root (`HeatOS`):
 
+Preferred on Windows if PowerShell scripts give you trouble:
+
+```bat
+run.cmd
+```
+
+PowerShell still works too:
+
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
 .\scripts\run.ps1
@@ -47,10 +68,16 @@ Set-ExecutionPolicy -Scope Process Bypass
 
 That command will:
 1. Assemble `boot.asm` and `kernel.asm`
-2. Create `build\HeatOS.img`
+2. Create `build\Heatos.img`
 3. Boot the image in QEMU
 
 If you only want to build:
+
+```bat
+build.cmd
+```
+
+or
 
 ```powershell
 .\scripts\build.ps1
@@ -67,13 +94,15 @@ If you already built once and only want to run:
 When QEMU starts, you should see a prompt like:
 
 ```text
-rush>
+Heat>
 ```
 
 Try:
 - `help` for available commands
-- `about` for kernel info
-- `clear` to clear the text screen
+- `status` for a system snapshot
+- `time` and `date` for RTC info
+- `history` and `repeat` for command recall
+- `echo hello world` to test argument handling
 
 ## Troubleshooting
 
@@ -85,16 +114,18 @@ Try:
   - Verify with `qemu-system-i386 --version`.
 - Script execution blocked:
   - Run `Set-ExecutionPolicy -Scope Process Bypass` in that terminal session.
+  - Or use `run.cmd` / `build.cmd`, which already launch PowerShell with `-ExecutionPolicy Bypass`.
 
 ## Project Notes
 
 - This is a real-mode (16-bit) educational kernel, intentionally minimal.
 - The build script auto-calculates how many sectors to load for the current kernel size.
-- The current size limit is 16 sectors (8 KiB), controlled in `scripts/build.ps1` by `maxKernelSectors`.
+- The current size limit is 128 sectors (64 KiB), controlled in `scripts/build.ps1` by `maxKernelSectors`.
+- The bootloader now reads across floppy tracks instead of assuming the kernel fits on the first one.
 
 ## Next Steps To Evolve HeatOS
 
-- Add your own command handlers in `src/kernel/kernel.asm`.
-- Add memory map and hardware probing.
+- Add a tiny file system or ramdisk.
 - Move from real mode to protected mode.
 - Replace floppy image flow with an ISO + GRUB boot path.
+- Add interrupt-driven keyboard and timer handling.
