@@ -35,9 +35,9 @@ $kernelSource = Join-Path $projectRoot "src\kernel\kernel.asm"
 
 $bootBin = Join-Path $buildDir "boot.bin"
 $kernelBin = Join-Path $buildDir "kernel.bin"
-$imagePath = Join-Path $buildDir "rushos.img"
+$imagePath = Join-Path $buildDir "Heatos.img"
 
-$maxKernelSectors = 16
+$maxKernelSectors = 128
 $maxKernelBytes = 512 * $maxKernelSectors
 $floppyImageBytes = 1474560
 

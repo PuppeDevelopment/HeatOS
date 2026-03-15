@@ -31,7 +31,7 @@ function Pause-IfNeeded {
 
 try {
     $projectRoot = Split-Path -Parent $PSScriptRoot
-    $imagePath = Join-Path $projectRoot "build\rushos.img"
+    $imagePath = Join-Path $projectRoot "build\Heatos.img"
 
     if (-not $SkipBuild) {
         & (Join-Path $PSScriptRoot "build.ps1")
@@ -46,6 +46,9 @@ try {
     }
 
     $qemu = Get-Command qemu-system-i386 -ErrorAction SilentlyContinue
+    if (-not $qemu) {
+        $qemu = Get-Command qemu-system-x86_64 -ErrorAction SilentlyContinue
+    }
     $qemuPath = $null
 
     if ($qemu) {
@@ -54,9 +57,13 @@ try {
     else {
         $qemuPath = @(
             (Join-Path $env:ProgramFiles "qemu\qemu-system-i386.exe"),
+            (Join-Path $env:ProgramFiles "qemu\qemu-system-x86_64.exe"),
             (Join-Path $env:ProgramFiles "QEMU\qemu-system-i386.exe"),
+            (Join-Path $env:ProgramFiles "QEMU\qemu-system-x86_64.exe"),
             (Join-Path ${env:ProgramFiles(x86)} "qemu\qemu-system-i386.exe"),
-            (Join-Path ${env:ProgramFiles(x86)} "QEMU\qemu-system-i386.exe")
+            (Join-Path ${env:ProgramFiles(x86)} "qemu\qemu-system-x86_64.exe"),
+            (Join-Path ${env:ProgramFiles(x86)} "QEMU\qemu-system-i386.exe"),
+            (Join-Path ${env:ProgramFiles(x86)} "QEMU\qemu-system-x86_64.exe")
         ) | Where-Object { $null -ne $_ -and (Test-Path $_) } | Select-Object -First 1
     }
 

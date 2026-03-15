@@ -8,6 +8,8 @@
 KERNEL_SEGMENT equ 0x1000
 KERNEL_START_SECTOR equ 2
 READ_RETRIES equ 3
+SECTORS_PER_TRACK equ 18
+HEAD_COUNT equ 2
 
 start:
     cli
@@ -27,7 +29,9 @@ start:
     mov ax, KERNEL_SEGMENT
     mov es, ax
     mov word [kernel_offset], 0
-    mov byte [next_sector], KERNEL_START_SECTOR
+    mov byte [current_sector], KERNEL_START_SECTOR
+    mov byte [current_head], 0
+    mov byte [current_cylinder], 0
     mov byte [sectors_left], KERNEL_SECTORS
 
 .read_next_sector:
@@ -38,9 +42,9 @@ start:
 .read_retry:
     mov ah, 0x02
     mov al, 0x01
-    mov ch, 0x00
-    mov cl, [next_sector]
-    mov dh, 0x00
+    mov ch, [current_cylinder]
+    mov cl, [current_sector]
+    mov dh, [current_head]
     mov dl, [boot_drive]
     mov bx, [kernel_offset]
     int 0x13
@@ -57,13 +61,29 @@ start:
 
 .read_ok:
     add word [kernel_offset], 512
-    inc byte [next_sector]
+    call advance_chs
     dec byte [sectors_left]
     jmp .read_next_sector
 
 .read_done:
-
+    mov dl, [boot_drive]
+    mov cl, KERNEL_SECTORS
     jmp KERNEL_SEGMENT:0x0000
+
+advance_chs:
+    inc byte [current_sector]
+    cmp byte [current_sector], SECTORS_PER_TRACK + 1
+    jb .done
+
+    mov byte [current_sector], 1
+    inc byte [current_head]
+    cmp byte [current_head], HEAD_COUNT
+    jb .done
+
+    mov byte [current_head], 0
+    inc byte [current_cylinder]
+.done:
+    ret
 
 disk_error:
     mov si, msg_disk_error
@@ -128,11 +148,13 @@ print_hex_nibble:
     ret
 
 boot_drive db 0
-next_sector db 0
+current_sector db 0
+current_head db 0
+current_cylinder db 0
 sectors_left db 0
 kernel_offset dw 0
 disk_error_code db 0
-msg_boot db "RushOS bootloader: loading kernel...", 13, 10, 0
+msg_boot db "HeatOS bootloader: loading kernel...", 13, 10, 0
 msg_disk_error db "Disk read error. BIOS code 0x", 0
 
 times 510-($-$$) db 0
