@@ -204,3 +204,46 @@ print_bcd_byte:
     call print_char
     popa
     ret
+
+format_mac_address:
+    push ax
+    push cx
+    push si
+    push di
+    push es
+    push ds
+    pop es
+    
+    mov cx, 5
+.loop:
+    lodsb
+    call byte_to_hex_string_inline
+    mov al, ':'
+    stosb
+    loop .loop
+    
+    lodsb
+    call byte_to_hex_string_inline
+    xor al, al
+    stosb
+    
+    pop es
+    pop di
+    pop si
+    pop cx
+    pop ax
+    ret
+
+byte_to_hex_string_inline:
+    push ax
+    mov ah, al
+    shr al, 4
+    call nibble_to_hex_ascii
+    stosb
+    mov al, ah
+    and al, 0x0F
+    call nibble_to_hex_ascii
+    stosb
+    pop ax
+    ret
+

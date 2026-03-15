@@ -53,6 +53,7 @@ start:
 ; --- Hardware Drivers ---------------------------------------------------------
 %include "src/drivers/mouse.asm"       ; Mouse: detect, show/hide cursor, poll
 %include "src/drivers/pci_net.asm"     ; PCI network: NIC scan, status strings
+%include "src/drivers/ne2k.asm"        ; NE2000: RX/TX logic
 
 ; --- Low-level Libraries ------------------------------------------------------
 %include "src/lib/video.asm"           ; VGA text-mode: fill_rect, write_string_at

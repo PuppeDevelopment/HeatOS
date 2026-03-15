@@ -285,6 +285,12 @@ show_net:
     call print_string
     call print_newline
 
+    mov si, net_console_mac_label_msg
+    call print_string
+    mov si, net_mac_buffer
+    call print_string
+    call print_newline
+
     mov si, net_console_hint_msg
     call print_string
     jmp shell_loop
@@ -320,6 +326,14 @@ do_ping:
 
 .loopback:
     mov si, ping_reply_msg
+    call print_string
+
+    ; Try to send a raw broadcast frame to test the hardware path
+    mov si, test_packet
+    mov cx, 64
+    call ne2k_send_packet
+    
+    mov si, ping_hw_test_msg
     call print_string
     jmp shell_loop
 

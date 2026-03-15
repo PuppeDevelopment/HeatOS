@@ -1,5 +1,6 @@
 init_network_subsystem:
     call detect_network_adapter
+    call init_ne2k
     call build_network_strings
     ret
 
@@ -54,6 +55,13 @@ detect_network_adapter:
     shr edx, 16
     mov [net_subclass], dl
     mov [net_class], dh
+
+    mov cl, 0x10
+    call pci_read_dword_bus0
+    test al, 1
+    jz .done ; Only support IO-based for now (NE2000)
+    and ax, 0xFFFC
+    mov [net_io_base], ax
     jmp .done
 
 .next_device:
@@ -130,6 +138,10 @@ build_network_strings:
     mov al, [net_subclass]
     mov di, net_subclass_buffer
     call byte_to_hex_string
+
+    mov si, net_mac_address
+    mov di, net_mac_buffer
+    call format_mac_address
     jmp .done
 
 .offline:
@@ -158,6 +170,10 @@ build_network_strings:
 
     mov si, net_none_byte_msg
     mov di, net_subclass_buffer
+    call copy_zero_string
+
+    mov si, net_none_word_msg
+    mov di, net_mac_buffer
     call copy_zero_string
 
 .done:

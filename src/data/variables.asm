@@ -53,3 +53,4 @@ net_vendor_buffer times 8 db 0
 net_device_buffer times 8 db 0
 net_class_buffer times 4 db 0
 net_subclass_buffer times 4 db 0
+net_mac_buffer times 18 db 0
