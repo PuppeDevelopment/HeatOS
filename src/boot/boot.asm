@@ -10,6 +10,7 @@ KERNEL_START_SECTOR equ 2
 READ_RETRIES equ 3
 
 start:
+jmp 0x0
     cli
     cld
     xor ax, ax
