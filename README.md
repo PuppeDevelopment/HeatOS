@@ -2,13 +2,28 @@
 
 ### yes even the README is ai :D
 
-A tiny educational operating system project with a **custom kernel** and bootloader, written in x86 assembly.
+A tiny educational operating system project with a **custom kernel** and bootloader, written in x86 assembly — now with a **fully modular source structure**.
 
-The project now separates concerns more clearly:
-- **Kernel layer**: hardware-level services (boot/runtime state, PCI scan, timing, memory stats).
-- **OS layer**: the **Popeye Plasma-style** desktop environment plus terminal apps/commands.
+The codebase is no longer a single monolithic file. It is split into 24 focused source files:
 
-It now boots **directly to desktop** into a Plasma-like text-mode shell with built-in apps and an integrated terminal.
+| Layer | Files |
+|---|---|
+| **Boot** | `src/boot/boot.asm` |
+| **Kernel entry** | `src/kernel/kernel.asm` (thin — only constants + `start:` + includes) |
+| **Drivers** | `src/drivers/mouse.asm`, `pci_net.asm` |
+| **Library** | `src/lib/video.asm`, `string.asm`, `input.asm`, `print.asm`, `math.asm`, `time.asm` |
+| **Desktop (Popeye Plasma)** | `src/desktop/desktop.asm`, `kickoff.asm`, `run_dialog.asm`, `renderer.asm` |
+| **Apps** | `src/apps/system.asm`, `files.asm`, `notes.asm`, `clock.asm`, `network.asm`, `power.asm` |
+| **Terminal** | `src/terminal/terminal.asm`, `commands.asm` |
+| **Data** | `src/data/strings.asm`, `variables.asm` |
+
+The project now separates concerns clearly:
+- **Kernel layer**: hardware-level services (boot, PCI, timing, memory, mouse, video primitives).
+- **Desktop layer** (`src/desktop/`): Popeye Plasma-style desktop environment — completely separate from the kernel.
+- **App layer** (`src/apps/`): each built-in app is its own file.
+- **Terminal layer** (`src/terminal/`): `Heat>` shell and command set, separate from everything else.
+
+It boots **directly to the desktop** — KDE Plasma-like text-mode shell with built-in apps and an integrated terminal.
 
 Desktop apps:
 - `Terminal`
@@ -47,11 +62,52 @@ No Visual Studio 2022 is required.
 
 ## What This Project Contains
 
-- `src/boot/boot.asm`: 512-byte boot sector that loads your kernel.
-- `src/kernel/kernel.asm`: kernel services + Popeye desktop + integrated terminal.
-- `scripts/build.ps1`: assembles image and attempts ISO generation when an ISO tool exists.
+- `src/boot/boot.asm`: 512-byte boot sector that loads the kernel.
+- `src/kernel/kernel.asm`: **thin entry point** — constants, `start:`, and `%include` chain only.
+- `src/drivers/mouse.asm`: BIOS INT 0x33 mouse driver.
+- `src/drivers/pci_net.asm`: PCI bus scan for network adapters (class 0x02).
+- `src/lib/video.asm`: VGA text-mode helpers (`fill_rect`, `write_string_at`, `put_char_at`).
+- `src/lib/string.asm`: zero-terminated string utilities (copy, compare, parse).
+- `src/lib/input.asm`: keyboard polling, `read_line`, command history.
+- `src/lib/print.asm`: BIOS teletype output (`print_char`, `print_string`, `print_newline`).
+- `src/lib/math.asm`: decimal/hex conversion and formatted numeric printing.
+- `src/lib/time.asm`: RTC date/time, uptime (BIOS tick counter), string builders.
+- `src/desktop/desktop.asm`: Popeye Plasma event loop and app dispatcher.
+- `src/desktop/kickoff.asm`: kickoff overlay menu (`M` key).
+- `src/desktop/run_dialog.asm`: run-by-name dialog (`R` key).
+- `src/desktop/renderer.asm`: desktop home screen, launcher rail, app frame rendering.
+- `src/apps/system.asm`: System Center app.
+- `src/apps/files.asm`: Files app (virtual layout / ramdisk placeholder).
+- `src/apps/notes.asm`: Notes / roadmap app.
+- `src/apps/clock.asm`: RTC clock app.
+- `src/apps/network.asm`: Network diagnostics app.
+- `src/apps/power.asm`: Power / halt / reboot app.
+- `src/terminal/terminal.asm`: `Heat>` shell session and command dispatch table.
+- `src/terminal/commands.asm`: all built-in command implementations.
+- `src/data/strings.asm`: zero-terminated string literals (last in binary).
+- `src/data/variables.asm`: mutable state and scratch buffers (last in binary).
+- `scripts/build.ps1`: assembles image, checks for C compiler, attempts ISO generation.
 - `scripts/run.ps1`: builds (unless `-SkipBuild`) and runs in QEMU (floppy or ISO).
+- `scripts/split_kernel.ps1`: utility — re-extracts module files from the backup monolith.
 - `build.cmd` / `run.cmd`: Windows wrappers that bypass PowerShell execution-policy issues.
+
+## C Language Support
+
+The project is currently **assembly-only** because 16-bit real-mode C requires a special
+cross-compiler (`ia16-elf-gcc` or OpenWatcom `wcc`). The build script detects these
+automatically if installed — otherwise it proceeds with NASM-only assembly.
+
+To add C support later:
+
+```powershell
+# Option A: ia16-elf-gcc (build from source — Linux/WSL recommended)
+# https://github.com/tkchia/gcc-ia16
+
+# Option B: OpenWatcom (Windows-native 16-bit C compiler)
+# https://github.com/open-watcom/open-watcom-v2/releases
+```
+
+Once installed, drop `.c` files anywhere under `src/` — `build.ps1` will pick them up.
 
 ## Requirements (Windows)
 
