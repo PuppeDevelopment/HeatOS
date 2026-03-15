@@ -1,6 +1,14 @@
-banner_msg db "================================", 13, 10
-           db " HeatOS 0.5 + Popeye Desktop   ", 13, 10
-           db "================================", 13, 10, 13, 10, 0
+banner_msg db "                           '---''(_/--'  `-'\_) ", 13, 10
+           db "                          ══╦════════════════════════╦══", 13, 10
+           db "                    ╔═══════╩════════════════════════╩═══════╗", 13, 10
+           db "                    ║               Welcome Back             ║", 13, 10
+           db "                    ║      ”I mean we kinda lost the src”    ║", 13, 10
+           db "                  ╔╗╚═════════════════════════════════════════╗", 13, 10
+           db "                  ║╚═══════════════════════════════════════════╝", 13, 10
+           db "                 ╔╩═══════════════════════════════════════════╩╗", 13, 10
+           db "                 ║   ~ ~ ~ Type H̲E̲L̲P̲ To See Commands ~ ~ ~     ║", 13, 10
+           db "                 ║ Copyright © 2025 Catnet All Rights Reserved ║", 13, 10
+           db "                 ╚═════════════════════════════════════════════╝", 13, 10, 0
 terminal_ready_msg db "Terminal opened from Popeye desktop.", 13, 10, 0
 terminal_hint_msg db "Try: help, net, ping 127.0.0.1, desktop", 13, 10, 13, 10, 0
 prompt_msg db "Heat> ", 0

@@ -36,13 +36,13 @@ start:
     mov [boot_drive], dl
     mov [kernel_sectors], cl
     mov byte [desktop_selection], APP_TERMINAL
-    mov byte [boot_mode], BOOT_MODE_DESKTOP
+    mov byte [boot_mode], BOOT_MODE_CONSOLE
 
     call capture_boot_ticks
     call init_mouse
     call init_network_subsystem
-    ; Default flow now boots straight into the desktop environment.
-    jmp desktop_main
+    ; Default to console session to show the banner
+    jmp terminal_session
 
 
 ; =============================================================================
