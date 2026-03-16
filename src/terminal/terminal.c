@@ -9,6 +9,7 @@
 #include "io.h"
 #include "ramdisk.h"
 #include "network.h"
+#include "catnake.h"
 
 /* -------------------------------------------------------------------------- */
 /* Color theme                                                                 */
@@ -286,6 +287,11 @@ static void read_rtc(int *h, int *m, int *s, int *day, int *mon, int *year) {
 static void banner(void) {
     term_puts_attr("HeatOS Console\n", TERM_TITLE);
     term_puts_attr("========================================\n", TERM_BANNER);
+    term_puts_attr("                                 |\\      _,,,---,,_\n", TERM_BANNER);
+    term_puts_attr("                         ZZZzz /,`.-'`'    -.  ;-;;,_\n", TERM_BANNER);
+    term_puts_attr("                               |,4-  ) )-,_. ,\\ (  `'-'\n", TERM_BANNER);
+    term_puts_attr("                               '---''(_/--'  `-'\\_)\n", TERM_BANNER);
+    term_puts_attr("========================================\n", TERM_BANNER);
     term_puts_attr("Network-aware shell in protected mode\n\n", TERM_BANNER);
 }
 
@@ -295,6 +301,7 @@ static void cmd_help(void) {
     term_putln("  echo      banner      beep        mem");
     term_putln("  date      time        uptime      boot");
     term_putln("  status    history     repeat      apps");
+    term_putln("  catnake");
     term_putln("  ls        cd          pwd         mkdir");
     term_putln("  net       ping <ipv4|domain>   arch");
     term_putln("  halt/shutdown  reboot/restart");
@@ -433,11 +440,20 @@ static void cmd_arch(void) {
     term_putc('\n', TERM_NORMAL);
 }
 
+static void cmd_catnake(void) {
+    term_clear_screen();
+    catnake_run();
+    term_clear_screen();
+    banner();
+    term_puts_attr("Terminal ready.\n\n", TERM_PROMPT);
+}
+
 static void cmd_apps(void) {
     term_puts_attr("Terminal commands:\n", TERM_TITLE);
     term_putln("  help, clear, about, version, echo, banner, beep");
     term_putln("  date, time, uptime, mem, boot, status, history");
     term_putln("  net, ping <ipv4|domain>, arch, ls, cd, pwd, mkdir");
+    term_putln("  catnake");
     term_putln("  halt, shutdown, reboot, restart");
     term_putc('\n', TERM_NORMAL);
 }
@@ -726,6 +742,7 @@ void terminal_run(void) {
         else if (strcmp(cmd, "ping")     == 0) cmd_ping(args);
         else if (strcmp(cmd, "arch")     == 0) cmd_arch();
         else if (strcmp(cmd, "apps")     == 0) cmd_apps();
+        else if (strcmp(cmd, "catnake")  == 0) cmd_catnake();
         else if (strcmp(cmd, "ls")       == 0) cmd_ls();
         else if (strcmp(cmd, "cd")       == 0) cmd_cd(args);
         else if (strcmp(cmd, "pwd")      == 0) cmd_pwd();
