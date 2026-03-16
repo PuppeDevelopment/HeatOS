@@ -252,3 +252,65 @@ void fs_build_path(fs_node_t node, char *buf, size_t buf_size) {
     buf[pos] = '\0';
 }
 
+bool fs_create_file(fs_node_t parent, const char *name) {
+    if (parent >= RAMDISK_MAX_NODES || !fs_is_dir(parent) || !name)
+        return false;
+
+    char token[RAMDISK_NAME_LEN];
+    fs_copy_name12_lower(token, name);
+    if (token[0] == '\0')
+        return false;
+
+    if (fs_find_child(parent, token))
+        return false;
+
+    fs_node_t n = fs_alloc_node();
+    if (!n)
+        return false;
+
+    fs_node_type[n] = FS_TYPE_FILE;
+    fs_node_parent[n] = parent;
+    fs_node_first_child[n] = 0;
+    fs_node_next_sibling[n] = fs_node_first_child[parent];
+    fs_node_first_child[parent] = n;
+    fs_node_size[n] = 0;
+    fs_node_data_off[n] = 0;
+    fs_copy_name12_lower(fs_node_name[n], token);
+
+    return true;
+}
+
+int fs_read(fs_node_t node, void *buf, int size) {
+    if (node >= RAMDISK_MAX_NODES || !fs_is_file(node) || !buf)
+        return -1;
+
+    int actual = (int)fs_node_size[node];
+    if (size < actual) actual = size;
+
+    if (actual > 0) {
+        memcpy(buf, &fs_data_pool[fs_node_data_off[node]], (size_t)actual);
+    }
+    return actual;
+}
+
+bool fs_write(fs_node_t node, const void *buf, int size) {
+    if (node >= RAMDISK_MAX_NODES || !fs_is_file(node) || size < 0)
+        return false;
+    if (size > 0 && !buf) return false;
+
+    /* Check if we have enough space in the pool */
+    if (fs_data_free + size > RAMDISK_DATA_CAP)
+        return false;
+
+    /* For simplicity, we always allocate new space for write */
+    fs_node_data_off[node] = fs_data_free;
+    fs_node_size[node]     = (uint16_t)size;
+
+    if (size > 0) {
+        memcpy(&fs_data_pool[fs_data_free], buf, (size_t)size);
+        fs_data_free += (uint16_t)size;
+    }
+
+    return true;
+}
+
