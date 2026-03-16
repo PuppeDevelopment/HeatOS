@@ -1,5 +1,5 @@
 ;=============================================================================
-; RushOS 32-bit Kernel Entry Point
+; HeatOS 32-bit Kernel Entry Point
 ; Bootloader jumps here after switching to protected mode.
 ; Sets up IDT (to prevent triple-faults) and calls the C kernel_main().
 ;=============================================================================

@@ -1,9 +1,5 @@
 boot_drive db 0
 kernel_sectors db 0
-desktop_selection db 0
-kickoff_selection db 0
-boot_mode db 0
-event_type db 0
 history_next db 0
 history_used db 0
 boot_ticks_hi dw 0
@@ -17,7 +13,6 @@ mouse_visible db 0
 mouse_prev_buttons db 0
 mouse_col db 0
 mouse_row db 0
-mouse_click_app db 0
 
 net_present db 0
 net_device_slot db 0

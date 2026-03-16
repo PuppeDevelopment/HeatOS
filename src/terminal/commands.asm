@@ -367,11 +367,6 @@ show_arch:
     call print_string
     jmp shell_loop
 
-leave_to_desktop:
-    mov si, returning_to_desktop_msg
-    call print_string
-    ret
-
 do_halt:
     mov si, halt_msg
     call print_string

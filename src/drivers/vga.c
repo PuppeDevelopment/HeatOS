@@ -4,7 +4,7 @@
 static volatile uint16_t *const VGA = (volatile uint16_t *)VGA_ADDRESS;
 
 void vga_init(void) {
-    vga_clear(THEME_DESKTOP);
+    vga_clear(VGA_ATTR(VGA_LIGHT_GRAY, VGA_BLACK));
 }
 
 void vga_clear(uint8_t attr) {

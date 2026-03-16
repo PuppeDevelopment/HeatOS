@@ -1,5 +1,5 @@
 /*
- * RushOS Kernel Linker Script
+ * HeatOS Kernel Linker Script
  * Kernel is loaded at physical address 0x10000 by the bootloader.
  */
 ENTRY(_start)

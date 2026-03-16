@@ -27,7 +27,7 @@
 
 #define VGA_ATTR(fg, bg)  ((uint8_t)((bg) << 4 | (fg)))
 
-/* Popeye Plasma color scheme (KDE Plasma-like) */
+/* Color theme */
 #define THEME_DESKTOP    VGA_ATTR(VGA_LIGHT_CYAN, VGA_BLUE)     /* 0x1B */
 #define THEME_TOPBAR     VGA_ATTR(VGA_WHITE, VGA_DARK_GRAY)     /* 0x8F */
 #define THEME_PANEL      VGA_ATTR(VGA_BLACK, VGA_LIGHT_GRAY)    /* 0x70 */

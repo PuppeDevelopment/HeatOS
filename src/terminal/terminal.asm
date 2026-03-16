@@ -188,30 +188,6 @@ dispatch_command:
     je show_apps
 
     mov si, command_buffer
-    mov di, cmd_desktop
-    call string_equals
-    cmp al, 1
-    je leave_to_desktop
-
-    mov si, command_buffer
-    mov di, cmd_gui
-    call string_equals
-    cmp al, 1
-    je leave_to_desktop
-
-    mov si, command_buffer
-    mov di, cmd_popeye
-    call string_equals
-    cmp al, 1
-    je leave_to_desktop
-
-    mov si, command_buffer
-    mov di, cmd_plasma
-    call string_equals
-    cmp al, 1
-    je leave_to_desktop
-
-    mov si, command_buffer
     mov di, cmd_halt
     call string_equals
     cmp al, 1

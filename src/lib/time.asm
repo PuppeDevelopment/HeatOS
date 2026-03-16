@@ -9,49 +9,7 @@ capture_boot_ticks:
     popa
     ret
 
-boot_mode_menu:
-    call clear_screen
-    mov si, banner_msg
-    call print_string
-    mov si, boot_menu_title_msg
-    call print_string
-    mov si, boot_menu_line1_msg
-    call print_string
-    mov si, boot_menu_line2_msg
-    call print_string
-    mov si, boot_menu_line3_msg
-    call print_string
-
-.wait:
-    mov si, boot_menu_prompt_msg
-    call print_string
-    call wait_key
-    call print_newline
-
-    cmp al, 13
-    je .desktop
-    cmp al, 'd'
-    je .desktop
-    cmp al, 'D'
-    je .desktop
-    cmp al, 'c'
-    je .console
-    cmp al, 'C'
-    je .console
-
-    mov si, boot_menu_invalid_msg
-    call print_string
-    jmp .wait
-
-.desktop:
-    mov byte [boot_mode], BOOT_MODE_DESKTOP
-    ret
-
-.console:
-    mov byte [boot_mode], BOOT_MODE_CONSOLE
-    ret
-
-build_desktop_stats:
+build_system_stats:
     call build_date_string
     call build_time_string
     call build_memory_string

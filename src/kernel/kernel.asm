@@ -8,18 +8,6 @@ HISTORY_ENTRY_SIZE equ INPUT_MAX + 1
 DAY_TICKS_HI equ 0x0018
 DAY_TICKS_LO equ 0x00B0
 VIDEO_SEGMENT equ 0xB800
-DESKTOP_APP_COUNT equ 7
-
-APP_TERMINAL equ 0
-APP_SYSTEM equ 1
-APP_FILES equ 2
-APP_NOTES equ 3
-APP_CLOCK equ 4
-APP_NETWORK equ 5
-APP_POWER equ 6
-
-BOOT_MODE_DESKTOP equ 0
-BOOT_MODE_CONSOLE equ 1
 
 start:
     cli
@@ -35,24 +23,27 @@ start:
 
     mov [boot_drive], dl
     mov [kernel_sectors], cl
-    mov byte [desktop_selection], APP_TERMINAL
-    mov byte [boot_mode], BOOT_MODE_DESKTOP
 
     call capture_boot_ticks
     call init_mouse
     call init_network_subsystem
     call ramdisk_init
-    ; Default flow now boots straight into the desktop environment.
-    jmp desktop_main
+    ; Boot directly into the terminal shell.
+    call terminal_session
+
+.halt:
+    cli
+    hlt
+    jmp .halt
 
 
 ; =============================================================================
-; RushOS - Modular Include Chain
+; HeatOS - Modular Include Chain
 ; Each subsystem lives in its own source file for clarity and separation.
 ; =============================================================================
 
 ; --- Hardware Drivers ---------------------------------------------------------
-%include "src/drivers/mouse.asm"       ; Mouse: detect, show/hide cursor, poll
+%include "src/drivers/mouse.asm"       ; Mouse: detect, show/hide cursor
 %include "src/drivers/pci_net.asm"     ; PCI network: NIC scan, status strings
 
 ; --- Low-level Libraries ------------------------------------------------------
@@ -63,20 +54,6 @@ start:
 %include "src/lib/math.asm"            ; Numbers: decimal/hex conversions
 %include "src/lib/time.asm"            ; RTC: date, time, uptime, tick capture
 %include "src/lib/ramdisk.asm"         ; In-memory filesystem (ramdisk)
-
-; --- Desktop Environment (Popeye Plasma) --------------------------------------
-%include "src/desktop/desktop.asm"     ; Main event loop, app dispatch
-%include "src/desktop/kickoff.asm"     ; Kickoff menu overlay (M key)
-%include "src/desktop/run_dialog.asm"  ; Run dialog (R key)
-%include "src/desktop/renderer.asm"    ; Desktop home, preview, app frame
-
-; --- Applications -------------------------------------------------------------
-%include "src/apps/system.asm"         ; System info center
-%include "src/apps/files.asm"          ; File browser (placeholder)
-%include "src/apps/notes.asm"          ; Roadmap / design notes
-%include "src/apps/clock.asm"          ; RTC clock display
-%include "src/apps/network.asm"        ; PCI NIC diagnostics
-%include "src/apps/power.asm"          ; Halt / reboot panel
 
 ; --- Terminal Shell -----------------------------------------------------------
 %include "src/terminal/terminal.asm"   ; Heat> shell session + dispatch table
