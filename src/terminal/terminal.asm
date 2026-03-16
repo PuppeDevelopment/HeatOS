@@ -140,6 +140,30 @@ dispatch_command:
     je do_repeat
 
     mov si, command_buffer
+    mov di, cmd_ls
+    call string_equals
+    cmp al, 1
+    je do_ls
+
+    mov si, command_buffer
+    mov di, cmd_cd
+    call string_equals
+    cmp al, 1
+    je do_cd
+
+    mov si, command_buffer
+    mov di, cmd_pwd
+    call string_equals
+    cmp al, 1
+    je do_pwd
+
+    mov si, command_buffer
+    mov di, cmd_mkdir
+    call string_equals
+    cmp al, 1
+    je do_mkdir
+
+    mov si, command_buffer
     mov di, cmd_net
     call string_equals
     cmp al, 1

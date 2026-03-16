@@ -50,3 +50,20 @@ net_vendor_buffer times 8 db 0
 net_device_buffer times 8 db 0
 net_class_buffer times 4 db 0
 net_subclass_buffer times 4 db 0
+
+fs_cwd db 0
+fs_data_free dw 0
+
+fs_token_buf times 13 db 0
+fs_path_buf times 64 db 0
+fs_pwd_stack times 64 db 0
+
+fs_node_type times 64 db 0
+fs_node_parent times 64 db 0
+fs_node_first_child times 64 db 0
+fs_node_next_sibling times 64 db 0
+fs_node_size times 64 dw 0
+fs_node_data_off times 64 dw 0
+fs_node_name times 64 * 12 db 0
+
+fs_data_pool times 8192 db 0

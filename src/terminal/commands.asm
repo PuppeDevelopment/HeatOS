@@ -7,6 +7,45 @@ do_clear:
     call clear_screen
     jmp shell_loop
 
+do_ls:
+    call fs_ls
+    jc .err
+    jmp shell_loop
+.err:
+    mov si, unknown_msg
+    call print_string
+    jmp shell_loop
+
+do_cd:
+    call fs_cd
+    jc .err
+    jmp shell_loop
+.err:
+    mov si, unknown_msg
+    call print_string
+    jmp shell_loop
+
+do_pwd:
+    call fs_pwd
+    jmp shell_loop
+
+do_mkdir:
+    mov si, [args_ptr]
+    call skip_spaces
+    cmp byte [si], 0
+    je .err
+    call fs_token_from_si
+    xor bx, bx
+    mov bl, [fs_cwd]
+    mov si, fs_token_buf
+    call fs_mkdir_child
+    jc .err
+    jmp shell_loop
+.err:
+    mov si, unknown_msg
+    call print_string
+    jmp shell_loop
+
 show_about:
     mov si, about_msg
     call print_string

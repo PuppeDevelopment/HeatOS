@@ -41,6 +41,7 @@ start:
     call capture_boot_ticks
     call init_mouse
     call init_network_subsystem
+    call ramdisk_init
     ; Default flow now boots straight into the desktop environment.
     jmp desktop_main
 
@@ -61,6 +62,7 @@ start:
 %include "src/lib/print.asm"           ; BIOS teletype: print_char, print_string
 %include "src/lib/math.asm"            ; Numbers: decimal/hex conversions
 %include "src/lib/time.asm"            ; RTC: date, time, uptime, tick capture
+%include "src/lib/ramdisk.asm"         ; In-memory filesystem (ramdisk)
 
 ; --- Desktop Environment (Popeye Plasma) --------------------------------------
 %include "src/desktop/desktop.asm"     ; Main event loop, app dispatch

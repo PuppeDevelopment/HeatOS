@@ -10,6 +10,7 @@ help_msg db "Commands:", 13, 10
          db "  echo      banner      beep        mem", 13, 10
          db "  date      time        uptime      boot", 13, 10
          db "  status    history     repeat      apps", 13, 10
+         db "  ls        cd          pwd         mkdir", 13, 10
          db "  net       ping        arch", 13, 10
          db "  desktop   gui/popeye/plasma  halt/shutdown", 13, 10
          db "  reboot/restart", 13, 10
@@ -282,3 +283,7 @@ cmd_halt db "halt", 0
 cmd_shutdown db "shutdown", 0
 cmd_reboot db "reboot", 0
 cmd_restart db "restart", 0
+cmd_ls db "ls", 0
+cmd_cd db "cd", 0
+cmd_pwd db "pwd", 0
+cmd_mkdir db "mkdir", 0

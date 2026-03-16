@@ -335,9 +335,9 @@ void app_system(void) {
  *===========================================================================*/
 void app_files(void) {
     draw_app_frame("File Browser");
-    vga_write_at(5, 10, "No filesystem implemented yet.", THEME_APP_BG);
-    vga_write_at(7, 10, "RushOS runs from a raw floppy image.", THEME_APP_BG);
-    vga_write_at(8, 10, "A FAT12 driver is planned.", THEME_APP_BG);
+    vga_write_at(5, 10, "Ramdisk file system is availabel", THEME_APP_BG);
+    vga_write_at(7, 10, "Use Terminal ls, cd, pwd, mkdir", THEME_APP_BG);
+    vga_write_at(8, 10, "Root has /apps /docs /home /system", THEME_APP_BG);
 
     while (keyboard_wait() != KEY_ESCAPE)
         ;
