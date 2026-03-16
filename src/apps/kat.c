@@ -17,9 +17,6 @@ void kat_run(const char *filename, term_hooks_t *hooks) {
         return;
     }
 
-    /* Read in chunks to handle files up to RAMDISK_DATA_CAP */
-    char buf[256];
-    int total_read = 0;
     int n;
     
     /* 

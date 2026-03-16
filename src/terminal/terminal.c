@@ -14,6 +14,7 @@
 #include "plasma_java.h"
 #include "mamu.h"
 #include "kat.h"
+#include "wget.h"
 
 /* -------------------------------------------------------------------------- */
 /* Color theme                                                                 */
@@ -300,7 +301,7 @@ static void cmd_help(void) {
     term_putln("  echo      banner      beep        mem");
     term_putln("  date      time        uptime      boot");
     term_putln("  status    history     repeat      apps");
-    term_putln("  catnake   mamu <file>  kat <file>");
+    term_putln("  catnake   mamu <file>  kat <file>  wget <url>");
     term_putln("  ls        cd          pwd         mkdir");
     term_putln("  net       ping <ipv4|domain>   arch");
     term_putln("  java [status|enable|run <demo>|demos]");
@@ -585,12 +586,18 @@ static void cmd_kat(const char *args) {
     kat_run(args, &hooks);
 }
 
+static void cmd_wget(const char *args) {
+    while (*args == ' ') args++;
+    term_hooks_t hooks = { term_putc, term_puts, term_putln };
+    wget_run(args, &hooks);
+}
+
 static void cmd_apps(void) {
     term_puts_attr("Terminal commands:\n", TERM_TITLE);
     term_putln("  help, clear, about, version, echo, banner, beep");
     term_putln("  status, history, net, ping <ipv4|domain>, arch");
     term_putln("  ls, cd, pwd, mkdir, java [status|enable|run <demo>|demos]");
-    term_putln("  popeye boot plasma    catnake, mamu, kat");
+    term_putln("  popeye boot plasma    catnake, mamu, kat, wget");
     term_putln("  halt, shutdown, reboot, restart");
     term_putc('\n', TERM_NORMAL);
 }
@@ -885,6 +892,7 @@ void terminal_run(void) {
         else if (strcmp(cmd, "catnake")  == 0) cmd_catnake();
         else if (strcmp(cmd, "mamu")     == 0) cmd_mamu(args);
         else if (strcmp(cmd, "kat")      == 0) cmd_kat(args);
+        else if (strcmp(cmd, "wget")     == 0) cmd_wget(args);
         else if (strcmp(cmd, "ls")       == 0) cmd_ls();
         else if (strcmp(cmd, "cd")       == 0) cmd_cd(args);
         else if (strcmp(cmd, "pwd")      == 0) cmd_pwd();
