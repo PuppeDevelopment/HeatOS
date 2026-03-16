@@ -13,6 +13,7 @@
 #include "popeye_plasma.h"
 #include "plasma_java.h"
 #include "mamu.h"
+#include "kat.h"
 
 /* -------------------------------------------------------------------------- */
 /* Color theme                                                                 */
@@ -55,7 +56,7 @@ static void hw_cursor_sync(void) {
     outb(0x3D4, 0x0E); outb(0x3D5, (uint8_t)((pos >> 8) & 0xFF));
 }
 
-static void term_putc(char c, uint8_t attr) {
+void term_putc(char c, uint8_t attr) {
     if (c == '\n') {
         cur_col = 0;
         cur_row++;
@@ -75,8 +76,8 @@ static void term_puts_attr(const char *s, uint8_t attr) {
     while (*s) term_putc(*s++, attr);
 }
 
-static void term_puts(const char *s)   { term_puts_attr(s, TERM_NORMAL); }
-static void term_putln(const char *s)  { term_puts(s); term_putc('\n', TERM_NORMAL); }
+void term_puts(const char *s)   { term_puts_attr(s, TERM_NORMAL); }
+void term_putln(const char *s)  { term_puts(s); term_putc('\n', TERM_NORMAL); }
 
 static void term_clear_screen(void) {
     vga_clear(TERM_NORMAL);
@@ -299,7 +300,7 @@ static void cmd_help(void) {
     term_putln("  echo      banner      beep        mem");
     term_putln("  date      time        uptime      boot");
     term_putln("  status    history     repeat      apps");
-    term_putln("  catnake   mamu <file>");
+    term_putln("  catnake   mamu <file>  kat <file>");
     term_putln("  ls        cd          pwd         mkdir");
     term_putln("  net       ping <ipv4|domain>   arch");
     term_putln("  java [status|enable|run <demo>|demos]");
@@ -578,12 +579,17 @@ static void cmd_mamu(const char *args) {
     term_puts_attr("Terminal ready.\n\n", TERM_PROMPT);
 }
 
+static void cmd_kat(const char *args) {
+    while (*args == ' ') args++;
+    kat_run(args);
+}
+
 static void cmd_apps(void) {
     term_puts_attr("Terminal commands:\n", TERM_TITLE);
     term_putln("  help, clear, about, version, echo, banner, beep");
     term_putln("  status, history, net, ping <ipv4|domain>, arch");
     term_putln("  ls, cd, pwd, mkdir, java [status|enable|run <demo>|demos]");
-    term_putln("  popeye boot plasma    catnake, mamu");
+    term_putln("  popeye boot plasma    catnake, mamu, kat");
     term_putln("  halt, shutdown, reboot, restart");
     term_putc('\n', TERM_NORMAL);
 }
@@ -877,6 +883,7 @@ void terminal_run(void) {
         else if (strcmp(cmd, "apps")     == 0) cmd_apps();
         else if (strcmp(cmd, "catnake")  == 0) cmd_catnake();
         else if (strcmp(cmd, "mamu")     == 0) cmd_mamu(args);
+        else if (strcmp(cmd, "kat")      == 0) cmd_kat(args);
         else if (strcmp(cmd, "ls")       == 0) cmd_ls();
         else if (strcmp(cmd, "cd")       == 0) cmd_cd(args);
         else if (strcmp(cmd, "pwd")      == 0) cmd_pwd();
