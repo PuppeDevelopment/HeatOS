@@ -32,6 +32,14 @@ char *strncpy(char *dst, const char *src, size_t n) {
     return dst;
 }
 
+char *strcat(char *dst, const char *src) {
+    char *d = dst;
+    while (*d) d++;
+    while ((*d++ = *src++))
+        ;
+    return dst;
+}
+
 void *memset(void *dst, int val, size_t n) {
     uint8_t *d = (uint8_t *)dst;
     while (n--) *d++ = (uint8_t)val;

@@ -13,6 +13,7 @@
 #include "popeye_plasma.h"
 #include "plasma_java.h"
 #include "mamu.h"
+#include "wget.h"
 
 /* -------------------------------------------------------------------------- */
 /* Color theme                                                                 */
@@ -299,7 +300,7 @@ static void cmd_help(void) {
     term_putln("  echo      banner      beep        mem");
     term_putln("  date      time        uptime      boot");
     term_putln("  status    history     repeat      apps");
-    term_putln("  catnake   mamu <file>");
+    term_putln("  catnake   mamu <file>  kat <file>  wget <url>");
     term_putln("  ls        cd          pwd         mkdir");
     term_putln("  net       ping <ipv4|domain>   arch");
     term_putln("  java [status|enable|run <demo>|demos]");
@@ -578,12 +579,39 @@ static void cmd_mamu(const char *args) {
     term_puts_attr("Terminal ready.\n\n", TERM_PROMPT);
 }
 
+static void cmd_kat(const char *args) {
+    while (*args == ' ') args++;
+    if (!*args) { term_putln("Usage: kat <file>"); return; }
+    
+    fs_node_t node = fs_resolve(args);
+    if (!node || !fs_is_file(node)) {
+        term_putln("kat: file not found");
+        return;
+    }
+
+    char buf[RAMDISK_DATA_CAP + 1];
+    int n = fs_read(node, buf, RAMDISK_DATA_CAP);
+    if (n >= 0) {
+        buf[n] = '\0';
+        term_puts(buf);
+        if (n > 0 && buf[n-1] != '\n') term_putc('\n', TERM_NORMAL);
+    } else {
+        term_putln("kat: error reading file");
+    }
+}
+
+static void cmd_wget(const char *args) {
+    while (*args == ' ') args++;
+    term_hooks_t hooks = { term_putc, term_puts, term_putln };
+    wget_run(args, &hooks);
+}
+
 static void cmd_apps(void) {
     term_puts_attr("Terminal commands:\n", TERM_TITLE);
     term_putln("  help, clear, about, version, echo, banner, beep");
     term_putln("  status, history, net, ping <ipv4|domain>, arch");
     term_putln("  ls, cd, pwd, mkdir, java [status|enable|run <demo>|demos]");
-    term_putln("  popeye boot plasma    catnake, mamu");
+    term_putln("  popeye boot plasma    catnake, mamu, kat, wget");
     term_putln("  halt, shutdown, reboot, restart");
     term_putc('\n', TERM_NORMAL);
 }
@@ -877,6 +905,8 @@ void terminal_run(void) {
         else if (strcmp(cmd, "apps")     == 0) cmd_apps();
         else if (strcmp(cmd, "catnake")  == 0) cmd_catnake();
         else if (strcmp(cmd, "mamu")     == 0) cmd_mamu(args);
+        else if (strcmp(cmd, "kat")      == 0) cmd_kat(args);
+        else if (strcmp(cmd, "wget")     == 0) cmd_wget(args);
         else if (strcmp(cmd, "ls")       == 0) cmd_ls();
         else if (strcmp(cmd, "cd")       == 0) cmd_cd(args);
         else if (strcmp(cmd, "pwd")      == 0) cmd_pwd();
