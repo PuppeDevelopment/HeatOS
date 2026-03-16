@@ -19,20 +19,20 @@ extern "C" {
 #define CLR_TEXT        0x00F1F5F9
 #define CLR_TEXT_DIM    0x00C8D2DC
 #define CLR_TEXT_FAINT  0x00869AA9
-#define CLR_PANEL_TOP   0x00373737
-#define CLR_PANEL_BOT   0x00272727
+#define CLR_PANEL_TOP   0x0042464A
+#define CLR_PANEL_BOT   0x00282B2F
 #define CLR_PANEL_EDGE  0x00111111
-#define CLR_MENU_BG     0x002E2E2E
-#define CLR_MENU_SIDE   0x00272727
-#define CLR_MENU_SEL    0x005198D2
-#define CLR_MENU_ALT    0x00383838
-#define CLR_WINDOW_BG   0x003A3A3A
-#define CLR_WINDOW_IN   0x003F4347
-#define CLR_WINDOW_TOP  0x00333437
-#define CLR_WINDOW_TOPF 0x00282A2D
+#define CLR_MENU_BG     0x00303235
+#define CLR_MENU_SIDE   0x0027292C
+#define CLR_MENU_SEL    0x00458ECD
+#define CLR_MENU_ALT    0x003B3F43
+#define CLR_WINDOW_BG   0x00383D42
+#define CLR_WINDOW_IN   0x00464C54
+#define CLR_WINDOW_TOP  0x00373B3F
+#define CLR_WINDOW_TOPF 0x002C2F33
 #define CLR_WINDOW_EDGE 0x0014171A
-#define CLR_SHADOW      0x00101010
-#define CLR_ACCENT      0x0055A7D9
+#define CLR_SHADOW      0x00131A22
+#define CLR_ACCENT      0x004993D0
 #define CLR_FOLDER      0x00D4A64A
 #define CLR_IMAGE       0x0067B6DF
 #define CLR_JAVA        0x0077C46F
@@ -91,6 +91,7 @@ static int  g_mouse_x = 140;
 static int  g_mouse_y = 120;
 static bool g_mouse_ldown = false;
 static bool g_was_ldown = false;
+static bool g_keyboard_click = false;
 
 static Window *g_drag_win = 0;
 static int g_drag_offset_x = 0;
@@ -483,6 +484,43 @@ static void draw_java_icon(int x, int y, int size, uint32_t color) {
     fb_draw_line(x + size - 14, y + 10, x + size - 8, y + 16, 0x00FFFFFF);
 }
 
+static void draw_network_icon(int x, int y, int size, uint32_t color) {
+    fb_fill_rect(x + 8, y + size - 10, 4, 6, color);
+    fb_fill_rect(x + 14, y + size - 14, 4, 10, color);
+    fb_fill_rect(x + 20, y + size - 18, 4, 14, color);
+    fb_fill_rect(x + 26, y + size - 22, 4, 18, color);
+}
+
+static void draw_mouse_mascot(int cx, int cy) {
+    uint32_t color = 0x001A2732;
+    fb_draw_line(cx - 62, cy - 18, cx - 110, cy - 46, color);
+    fb_draw_line(cx - 110, cy - 46, cx - 126, cy - 52, color);
+    fb_fill_circle(cx - 10, cy + 2, 20, color);
+    fb_fill_circle(cx + 18, cy - 2, 13, color);
+    fb_fill_circle(cx + 8, cy - 16, 5, color);
+    fb_fill_circle(cx + 22, cy - 14, 5, color);
+    fb_fill_rect(cx - 32, cy + 4, 26, 16, color);
+    fb_fill_rect(cx - 2, cy + 6, 14, 14, color);
+    fb_draw_line(cx - 24, cy + 18, cx - 26, cy + 28, color);
+    fb_draw_line(cx - 8, cy + 18, cx - 6, cy + 30, color);
+    fb_draw_line(cx + 8, cy + 16, cx + 12, cy + 28, color);
+    fb_draw_line(cx + 22, cy + 10, cx + 32, cy + 12, color);
+    fb_draw_line(cx + 24, cy + 4, cx + 38, cy + 0, color);
+    fb_draw_line(cx + 24, cy + 8, cx + 38, cy + 12, color);
+}
+
+static void draw_dock_app_icon(AppId app, int x, int y, uint32_t color) {
+    if (app == APP_HOME || app == APP_FILES) {
+        draw_folder_icon(x, y, 30, color);
+    } else if (app == APP_BROWSER || app == APP_IMAGE) {
+        draw_picture_icon(x, y, 30, color);
+    } else if (app == APP_JAVA) {
+        draw_java_icon(x, y, 30, color);
+    } else {
+        draw_network_icon(x, y, 30, color);
+    }
+}
+
 static void draw_desktop_icon(int x, int y, const char *label, AppId app) {
     bool hover = hit(g_mouse_x, g_mouse_y, x - 6, y - 6, 72, 84);
     uint32_t frame = hover ? CLR_ACCENT : 0x004D6678;
@@ -500,11 +538,14 @@ static void draw_desktop_icon(int x, int y, const char *label, AppId app) {
 }
 
 static void draw_wallpaper(void) {
-    draw_gradient_rect(0, 0, fb_width, fb_height, 0x003BC7C7, 0x001580B6);
-    fb_fill_circle(fb_width / 2, fb_height + 220, 620, 0x006BC9D8);
-    fb_fill_circle(fb_width / 2 + 160, fb_height + 250, 520, 0x0046AAD1);
-    fb_fill_circle(-90, fb_height + 170, 430, 0x002E94C7);
-    fb_draw_string(fb_width - 140, fb_height - 24, "RushOS XFCE", 0x00EAF7FF, 0xFF000000);
+    draw_gradient_rect(0, 0, fb_width, fb_height, 0x0034C5C7, 0x00177EAF);
+    fb_fill_circle(fb_width / 2, fb_height / 2 + 44, 220, 0x00AEEBF5);
+    fb_fill_circle(fb_width / 2, fb_height / 2 + 60, 186, 0x0095DFEC);
+    fb_fill_circle(fb_width / 2, fb_height + 210, 640, 0x006BCED9);
+    fb_fill_circle(fb_width / 2 + 160, fb_height + 235, 520, 0x0048ABD2);
+    fb_fill_circle(-120, fb_height + 150, 420, 0x002F95C7);
+    draw_mouse_mascot(fb_width / 2 + 4, fb_height / 2 + 48);
+    fb_draw_string(fb_width - 172, fb_height - 24, "RushOS XFCE Session", 0x00EAF7FF, 0xFF000000);
 
     draw_desktop_icon(22, 74, "Home", APP_HOME);
     draw_desktop_icon(22, 160, "Files", APP_FILES);
@@ -513,11 +554,13 @@ static void draw_wallpaper(void) {
 
 static void draw_panel(void) {
     draw_gradient_rect(0, 0, fb_width, PANEL_H, CLR_PANEL_TOP, CLR_PANEL_BOT);
+    fb_draw_line(0, 0, fb_width, 0, 0x00535A61);
     fb_draw_line(0, PANEL_H - 1, fb_width, PANEL_H - 1, CLR_PANEL_EDGE);
 
-    fb_fill_rect(4, 4, 118, 24, g_menu_open ? CLR_ACCENT : CLR_MENU_ALT);
-    fb_draw_rect(4, 4, 118, 24, CLR_PANEL_EDGE);
-    fb_draw_string(14, 8, "Applications", CLR_TEXT, 0xFF000000);
+    fb_fill_rect(4, 4, 122, 24, g_menu_open ? CLR_ACCENT : CLR_MENU_ALT);
+    fb_draw_rect(4, 4, 122, 24, CLR_PANEL_EDGE);
+    fb_fill_rect(10, 10, 8, 8, 0x00ECEFF4);
+    fb_draw_string(24, 8, "Applications", CLR_TEXT, 0xFF000000);
 
     int task_x = 132;
     for (int i = 0; i < g_window_count; i++) {
@@ -529,10 +572,12 @@ static void draw_panel(void) {
     }
 
     int tray_x = fb_width - 158;
+    fb_draw_line(tray_x - 12, 6, tray_x - 12, 25, 0x00444C54);
     fb_fill_rect(tray_x, 7, 10, 10, CLR_GOOD);
     fb_fill_rect(tray_x + 16, 7, 10, 10, CLR_WARN);
     fb_fill_rect(tray_x + 32, 7, 10, 10, CLR_IMAGE);
-    fb_draw_string(fb_width - 100, 8, "28%  1:16", CLR_TEXT, 0xFF000000);
+    fb_draw_string(fb_width - 180, 8, "Live Session", CLR_TEXT_DIM, 0xFF000000);
+    fb_draw_string(fb_width - 92, 8, "28%  1:16", CLR_TEXT, 0xFF000000);
 }
 
 static void draw_menu(void) {
@@ -541,21 +586,27 @@ static void draw_menu(void) {
     int menu_x = 6;
     int menu_y = PANEL_H + 4;
     int menu_w = 332;
-    int menu_h = 246;
+    int menu_h = 318;
 
     fb_fill_rect(menu_x + 6, menu_y + 6, menu_w, menu_h, CLR_SHADOW);
     fb_fill_rect(menu_x, menu_y, menu_w, menu_h, CLR_MENU_BG);
     fb_draw_rect(menu_x, menu_y, menu_w, menu_h, CLR_WINDOW_EDGE);
     fb_fill_rect(menu_x, menu_y, 108, menu_h, CLR_MENU_SIDE);
 
-    fb_draw_string(menu_x + 14, menu_y + 14, "Accessories", CLR_TEXT, 0xFF000000);
-    fb_draw_string(menu_x + 14, menu_y + 46, "Internet", CLR_TEXT_DIM, 0xFF000000);
-    fb_draw_string(menu_x + 14, menu_y + 78, "System", CLR_TEXT_DIM, 0xFF000000);
-    fb_draw_string(menu_x + 14, menu_y + 110, "Graphics", CLR_TEXT_DIM, 0xFF000000);
+    fb_draw_string(menu_x + 14, menu_y + 12, "Applications", CLR_TEXT, 0xFF000000);
+    fb_draw_string(menu_x + 14, menu_y + 40, "Run Program...", CLR_TEXT_DIM, 0xFF000000);
+    fb_draw_string(menu_x + 14, menu_y + 72, "Accessories", CLR_TEXT_DIM, 0xFF000000);
+    fb_draw_string(menu_x + 14, menu_y + 100, "Development", CLR_TEXT_DIM, 0xFF000000);
+    fb_draw_string(menu_x + 14, menu_y + 128, "Documentation", CLR_TEXT_DIM, 0xFF000000);
+    fb_draw_string(menu_x + 14, menu_y + 156, "Graphics", CLR_TEXT_DIM, 0xFF000000);
+    fb_draw_string(menu_x + 14, menu_y + 184, "Internet", CLR_TEXT_DIM, 0xFF000000);
+    fb_draw_string(menu_x + 14, menu_y + 212, "Office", CLR_TEXT_DIM, 0xFF000000);
+    fb_draw_string(menu_x + 14, menu_y + 240, "System", CLR_TEXT_DIM, 0xFF000000);
+    fb_draw_string(menu_x + 14, menu_y + 286, "Log Out", CLR_TEXT, 0xFF000000);
 
     g_menu_hover = -1;
     for (int i = 0; i < MENU_ITEM_COUNT; i++) {
-        int row_y = menu_y + 18 + i * 42;
+        int row_y = menu_y + 34 + i * 46;
         bool hover = hit(g_mouse_x, g_mouse_y, menu_x + 118, row_y - 4, 204, 34);
         if (hover) g_menu_hover = i;
 
@@ -564,6 +615,7 @@ static void draw_menu(void) {
         fb_draw_rect(menu_x + 126, row_y + 4, 18, 18, CLR_WINDOW_EDGE);
         fb_draw_string(menu_x + 154, row_y, g_menu_items[i].label, CLR_TEXT, 0xFF000000);
         fb_draw_string(menu_x + 154, row_y + 14, g_menu_items[i].hint, CLR_TEXT_FAINT, 0xFF000000);
+        fb_draw_string(menu_x + 304, row_y + 7, ">", CLR_TEXT_FAINT, 0xFF000000);
     }
 }
 
@@ -582,7 +634,7 @@ static void draw_dock(void) {
         bool hover = hit(g_mouse_x, g_mouse_y, bx, dock_y + 6, 40, 32);
         fb_fill_rect(bx, dock_y + 6, 40, 32, hover ? 0x00414A52 : 0x00373D44);
         fb_draw_rect(bx, dock_y + 6, 40, 32, CLR_WINDOW_EDGE);
-        fb_fill_rect(bx + 8, dock_y + 14, 24, 16, colors[i]);
+        draw_dock_app_icon(apps[i], bx + 5, dock_y + 7, colors[i]);
         if (app_is_open(apps[i])) {
             fb_fill_rect(bx + 12, dock_y + 36, 16, 3, CLR_TEXT);
         }
@@ -821,14 +873,14 @@ static void draw_cursor(void) {
     int mx = g_mouse_x;
     int my = g_mouse_y;
 
-    fb_draw_line(mx + 1, my + 2, mx + 12, my + 14, CLR_SHADOW);
-    fb_draw_line(mx, my, mx + 16, my + 10, CLR_TEXT);
-    fb_draw_line(mx, my, mx + 10, my + 16, CLR_TEXT);
-    fb_draw_line(mx + 16, my + 10, mx + 10, my + 16, CLR_TEXT);
+    fb_draw_line(mx + 2, my + 3, mx + 13, my + 15, CLR_SHADOW);
+    fb_draw_line(mx, my, mx + 17, my + 10, 0x00FFFFFF);
+    fb_draw_line(mx, my, mx + 10, my + 17, 0x00FFFFFF);
+    fb_draw_line(mx + 17, my + 10, mx + 10, my + 17, 0x00FFFFFF);
     for (int y = 1; y < 14; y++) {
         for (int x = 1; x < 12; x++) {
             if (x + y < 16 && x < y + 9) {
-                fb_put_pixel(mx + x, my + y, 0x00000000);
+                fb_put_pixel(mx + x, my + y, 0x001A2732);
             }
         }
     }
@@ -1031,6 +1083,9 @@ bool popeye_plasma_desktop_run(bool java_enabled) {
     (void)java_enabled;
     if (!fb_init()) return false;
 
+    if (!mouse_is_ready()) {
+        (void)mouse_init();
+    }
     mouse_set_reporting(true);
     java_vm_init();
     g_java_ready = true;
@@ -1041,6 +1096,7 @@ bool popeye_plasma_desktop_run(bool java_enabled) {
     g_drag_win = 0;
     g_mouse_ldown = false;
     g_was_ldown = false;
+    g_keyboard_click = false;
     g_window_count = 0;
     g_selected_node = 0;
     g_image_node = 0;
@@ -1055,7 +1111,7 @@ bool popeye_plasma_desktop_run(bool java_enabled) {
 
     (void)wm_open_window(APP_FILES, g_files_dir);
     (void)wm_open_window(APP_HOME, 0);
-    set_status("Desktop ready: open /home/sample.ppm or /java/hello.jar");
+    set_status("Desktop ready: open /home/sample.ppm or /java/hello.jar. Arrow keys + Enter also move/click.");
 
     while (keyboard_poll() != 0) {}
     while (mouse_poll(0)) {}
@@ -1067,7 +1123,20 @@ bool popeye_plasma_desktop_run(bool java_enabled) {
             if (key == KEY_F2 || key == KEY_ESCAPE) g_exit = true;
             if (key == 'f' || key == 'F') (void)wm_open_window(APP_FILES, g_files_dir);
             if (key == 'j' || key == 'J') (void)wm_open_window(APP_JAVA, g_java_node);
+            if (key == KEY_LEFT) g_mouse_x -= 10;
+            if (key == KEY_RIGHT) g_mouse_x += 10;
+            if (key == KEY_UP) g_mouse_y -= 10;
+            if (key == KEY_DOWN) g_mouse_y += 10;
+            if (key == KEY_ENTER || key == ' ') {
+                g_mouse_ldown = true;
+                g_keyboard_click = true;
+            }
         }
+
+        if (g_mouse_x < 0) g_mouse_x = 0;
+        if (g_mouse_x > fb_width - 1) g_mouse_x = fb_width - 1;
+        if (g_mouse_y < 0) g_mouse_y = 0;
+        if (g_mouse_y > fb_height - 1) g_mouse_y = fb_height - 1;
 
         for (int i = 0; i < 128; i++) {
             mouse_packet_t pkt;
@@ -1082,7 +1151,13 @@ bool popeye_plasma_desktop_run(bool java_enabled) {
         }
 
         handle_clicks();
-        g_was_ldown = g_mouse_ldown;
+        if (g_keyboard_click) {
+            g_mouse_ldown = false;
+            g_was_ldown = false;
+            g_keyboard_click = false;
+        } else {
+            g_was_ldown = g_mouse_ldown;
+        }
 
         draw_wallpaper();
         draw_windows();

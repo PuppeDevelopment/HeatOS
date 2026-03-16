@@ -164,13 +164,33 @@ static bool mouse_queue_pop(mouse_packet_t *pkt) {
 
 static bool mouse_reset_device(void) {
     uint8_t value = 0;
+    bool saw_ack = false;
 
     if (!ps2_write_aux(0xFF)) return false;
-    if (!ps2_read_aux_byte(&value) || value != MOUSE_ACK) return false;
-    if (!ps2_read_aux_byte(&value) || value != MOUSE_BAT_OK) return false;
-    if (!ps2_read_aux_byte(&value)) return false;
 
-    return value == MOUSE_DEVICE_STD || value == MOUSE_DEVICE_WHEEL || value == MOUSE_DEVICE_FIVEBTN;
+    for (int attempt = 0; attempt < 4; attempt++) {
+        if (!ps2_read_aux_byte(&value)) {
+            break;
+        }
+
+        if (value == MOUSE_ACK) {
+            saw_ack = true;
+            continue;
+        }
+
+        if (value == MOUSE_RESEND) {
+            return false;
+        }
+
+        if (value == MOUSE_BAT_OK ||
+            value == MOUSE_DEVICE_STD ||
+            value == MOUSE_DEVICE_WHEEL ||
+            value == MOUSE_DEVICE_FIVEBTN) {
+            continue;
+        }
+    }
+
+    return saw_ack;
 }
 
 static void mouse_drain_device(void) {
@@ -220,6 +240,7 @@ static void mouse_drain_device(void) {
 
 bool mouse_init(void) {
     uint8_t cmd_byte = 0;
+    bool device_replied = false;
 
     g_mouse_ready = false;
     g_reporting_enabled = false;
@@ -245,17 +266,22 @@ bool mouse_init(void) {
 
     ps2_flush_output();
 
-    if (!mouse_reset_device()) return false;
-    if (!mouse_send_cmd(0xF5)) return false;
-    if (!mouse_send_cmd_arg(0xF3, 100u)) return false;
-    if (!mouse_send_cmd_arg(0xE8, 2u)) return false;
-    if (!mouse_send_cmd(0xF6)) return false;
+    device_replied = mouse_reset_device();
+
+    /* PS/2 mice in QEMU/older VMs can miss one of these ACKs even though the
+       device still works. Use best-effort configuration and rely on runtime
+       packet sync instead of treating a missed reply as fatal. */
+    if (mouse_send_cmd(0xF5)) device_replied = true;
+    if (mouse_send_cmd(0xF6)) device_replied = true;
+    (void)mouse_send_cmd_arg(0xE8, 2u);
+    (void)mouse_send_cmd_arg(0xF3, 80u);
 
     g_mouse_ready = true;
     g_reporting_enabled = false;
     g_pkt_idx = 0u;
     mouse_queue_reset();
     ps2_flush_output();
+    (void)device_replied;
     return true;
 }
 
@@ -269,17 +295,16 @@ void mouse_set_reporting(bool enabled) {
     }
 
     if (enabled) {
-        if (mouse_send_cmd(0xF4)) {
-            g_reporting_enabled = true;
-            g_pkt_idx = 0u;
-        }
+        (void)mouse_send_cmd(0xF4);
+        g_reporting_enabled = true;
+        g_pkt_idx = 0u;
+        mouse_queue_reset();
     } else {
-        if (mouse_send_cmd(0xF5)) {
-            g_reporting_enabled = false;
-            g_pkt_idx = 0u;
-            mouse_queue_reset();
-            ps2_flush_output();
-        }
+        (void)mouse_send_cmd(0xF5);
+        g_reporting_enabled = false;
+        g_pkt_idx = 0u;
+        mouse_queue_reset();
+        ps2_flush_output();
     }
 }
 
