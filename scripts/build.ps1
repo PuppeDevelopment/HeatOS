@@ -87,7 +87,7 @@ if (-not (Test-Path $objcopyPath)) { throw "llvm-objcopy not found in $llvmBinDi
 $cSources = Get-ChildItem -Recurse -Filter "*.c" -Path $srcDir
 
 Write-Host ""
-Write-Host "=== RushOS Build (C + ASM, 32-bit Protected Mode) ===" -ForegroundColor Cyan
+Write-Host "=== HeatOS Build (C + ASM, 32-bit Protected Mode) ===" -ForegroundColor Cyan
 Write-Host ""
 
 # ---- Step 1: Assemble kernel entry (ELF32 object) -------------------------
@@ -173,9 +173,9 @@ if (-not $SkipIso) {
     if ($isoTool) {
         if (Test-Path $isoPath) { Remove-Item $isoPath -Force }
         if ($isoTool.Name -ieq "xorriso") {
-            & $isoTool.Source -as mkisofs -quiet -V "RUSHOS" -o $isoPath -b "Heatos.img" -c "boot.cat" $buildDir
+            & $isoTool.Source -as mkisofs -quiet -V "HEATOS" -o $isoPath -b "Heatos.img" -c "boot.cat" $buildDir
         } else {
-            & $isoTool.Source -quiet -V "RUSHOS" -o $isoPath -b "Heatos.img" -c "boot.cat" $buildDir
+            & $isoTool.Source -quiet -V "HEATOS" -o $isoPath -b "Heatos.img" -c "boot.cat" $buildDir
         }
     } else {
         Write-Host "  ISO tool not found (skipping)." -ForegroundColor DarkGray

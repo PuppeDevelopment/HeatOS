@@ -1,5 +1,5 @@
 ;=============================================================================
-; RushOS Boot Sector
+; HeatOS Boot Sector
 ; 16-bit real mode -> loads kernel -> enables A20 -> enters 32-bit protected mode
 ;=============================================================================
 [bits 16]
@@ -230,7 +230,7 @@ cur_sector      db 0
 cur_head        db 0
 cur_cyl         db 0
 sectors_left    db 0
-msg_boot        db "RushOS: Loading kernel...", 13, 10, 0
+msg_boot        db "HeatOS: Loading kernel...", 13, 10, 0
 msg_ok          db "OK", 13, 10, 0
 msg_disk_err    db "Disk error!", 0
 
