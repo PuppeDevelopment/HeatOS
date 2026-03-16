@@ -41,7 +41,7 @@ $kernelBin    = Join-Path $buildDir "kernel.bin"
 $imagePath    = Join-Path $buildDir "Heatos.img"
 $isoPath      = Join-Path $buildDir "Heatos.iso"
 
-$maxKernelSectors = 128
+$maxKernelSectors = 256
 $maxKernelBytes   = 512 * $maxKernelSectors
 $floppyImageBytes = 1474560
 
@@ -83,11 +83,12 @@ $objcopyPath = Join-Path $llvmBinDir "llvm-objcopy.exe"
 if (-not (Test-Path $lldPath))     { throw "ld.lld not found in $llvmBinDir" }
 if (-not (Test-Path $objcopyPath)) { throw "llvm-objcopy not found in $llvmBinDir" }
 
-# ---- Collect C source files -----------------------------------------------
+# ---- Collect C/C++ source files -------------------------------------------
 $cSources = Get-ChildItem -Recurse -Filter "*.c" -Path $srcDir
+$cppSources = Get-ChildItem -Recurse -Filter "*.cpp" -Path $srcDir
 
 Write-Host ""
-Write-Host "=== HeatOS Build (C + ASM, 32-bit Protected Mode) ===" -ForegroundColor Cyan
+Write-Host "=== HeatOS Build (C/C++ + ASM, 32-bit Protected Mode) ===" -ForegroundColor Cyan
 Write-Host ""
 
 # ---- Step 1: Assemble kernel entry (ELF32 object) -------------------------
@@ -117,6 +118,34 @@ $cFlags = @(
     "-c"
 )
 
+$cppFlags = @(
+    "--target=i386-none-elf",
+    "-march=i386",
+    "-mno-mmx",
+    "-mno-sse",
+    "-mno-sse2",
+    "-msoft-float",
+    "-fno-vectorize",
+    "-fno-slp-vectorize",
+    "-ffreestanding",
+    "-nostdlib",
+    "-nostdlib++",
+    "-fno-stack-protector",
+    "-fno-pie",
+    "-fno-exceptions",
+    "-fno-rtti",
+    "-fno-threadsafe-statics",
+    "-fno-use-cxa-atexit",
+    "-O2",
+    "-Wall",
+    "-Wextra",
+    "-std=c++17",
+    "-I$includeDir",
+    "-c",
+    "-x",
+    "c++"
+)
+
 $objFiles = @($entryObj)
 
 foreach ($cs in $cSources) {
@@ -127,6 +156,18 @@ foreach ($cs in $cSources) {
     if ($LASTEXITCODE -ne 0) {
         $clangOutput | ForEach-Object { Write-Host $_ }
         throw "Clang failed on $($cs.Name)"
+    }
+    $objFiles += $objPath
+}
+
+foreach ($cpps in $cppSources) {
+    $objName = [System.IO.Path]::GetFileNameWithoutExtension($cpps.Name) + ".cpp.o"
+    $objPath = Join-Path $buildDir $objName
+    Write-Host "  [CXX] $($cpps.Name)" -ForegroundColor Yellow
+    $clangOutput = & $clangPath @cppFlags $cpps.FullName -o $objPath 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        $clangOutput | ForEach-Object { Write-Host $_ }
+        throw "Clang failed on $($cpps.Name)"
     }
     $objFiles += $objPath
 }
