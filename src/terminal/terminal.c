@@ -514,6 +514,27 @@ static void cmd_java(const char *args) {
         return;
     }
 
+    if (strncmp(args, "runfile", 7) == 0) {
+        const char *path = args + 7;
+        while (*path == ' ') path++;
+        if (!*path) {
+            term_putln("Usage: java runfile <path>");
+            return;
+        }
+
+        java_result_t result;
+        term_puts("Running Java file: "); term_putln(path);
+        term_putc('\n', TERM_NORMAL);
+
+        if (java_vm_run_path(path, &result)) {
+            term_puts(result.output);
+        } else {
+            term_puts("Error: "); term_putln(result.error);
+        }
+        term_putc('\n', TERM_NORMAL);
+        return;
+    }
+
     if (strncmp(args, "run", 3) == 0) {
         const char *name = args + 3;
         while (*name == ' ') name++;
@@ -541,7 +562,7 @@ static void cmd_java(const char *args) {
         return;
     }
 
-    term_putln("Usage: java [status|enable|run <demo>|demos]");
+    term_putln("Usage: java [status|enable|run <demo>|runfile <path>|demos]");
 }
 
 static void cmd_popeye(const char *args) {

@@ -11,6 +11,7 @@ static bool g_java_support_enabled = false;
 extern "C" void popeye_plasma_init(void) {
     /* Terminal-first: desktop launched via 'popeye boot plasma' command. */
     g_boot_desktop = false;
+    g_java_support_enabled = true;
     g_plasma_ready = true;
 }
 
@@ -53,7 +54,6 @@ extern "C" bool popeye_plasma_desktop_boot_allowed(void) {
 }
 
 extern "C" bool popeye_plasma_enable_java_support(void) {
-    /* Bootstrap only: this reserves Java support plumbing without a full JVM. */
     g_java_support_enabled = true;
     return true;
 }
@@ -63,5 +63,5 @@ extern "C" bool popeye_plasma_java_support_enabled(void) {
 }
 
 extern "C" const char *popeye_plasma_java_support_mode(void) {
-    return g_java_support_enabled ? "bootstrap-stub" : "disabled";
+    return g_java_support_enabled ? "mini-vm" : "disabled";
 }

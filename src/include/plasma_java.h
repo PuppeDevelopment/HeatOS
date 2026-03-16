@@ -2,6 +2,7 @@
 #define PLASMA_JAVA_H
 
 #include "types.h"
+#include "ramdisk.h"
 
 #define JAVA_OUTPUT_MAX 1024
 
@@ -18,6 +19,8 @@ extern "C" {
 
 void        java_vm_init(void);
 bool        java_vm_run(const char *demo_name, java_result_t *result);
+bool        java_vm_run_file(fs_node_t node, java_result_t *result);
+bool        java_vm_run_path(const char *path, java_result_t *result);
 int         java_vm_demo_count(void);
 const char *java_vm_demo_name(int index);
 

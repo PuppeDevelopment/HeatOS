@@ -76,6 +76,25 @@ void *memcpy(void *dst, const void *src, size_t n) {
     return dst;
 }
 
+void *memmove(void *dst, const void *src, size_t n) {
+    uint8_t *d = (uint8_t *)dst;
+    const uint8_t *s = (const uint8_t *)src;
+
+    if (d == s || n == 0) return dst;
+
+    if (d < s || d >= s + n) {
+        return memcpy(dst, src, n);
+    }
+
+    d += n;
+    s += n;
+    while (n--) {
+        *--d = *--s;
+    }
+
+    return dst;
+}
+
 void itoa(int value, char *buf, int base) {
     char tmp[34];
     int i = 0;

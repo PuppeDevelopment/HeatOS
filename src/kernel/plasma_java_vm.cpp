@@ -5,6 +5,7 @@
  *===========================================================================*/
 extern "C" {
 #include "plasma_java.h"
+#include "ramdisk.h"
 #include "string.h"
 }
 
@@ -80,6 +81,8 @@ struct JVM {
     char          err_msg[64];
     int           insn_count;
 };
+
+static uint8_t g_java_file_buf[RAMDISK_DATA_CAP];
 
 static void jvm_init(JVM *vm, const uint8_t *code, int len, char *out, int out_max) {
     vm->sp = 0;
@@ -397,13 +400,36 @@ static const JavaDemo g_demos[] = {
 /* Public API                                                                 */
 /* ═══════════════════════════════════════════════════════════════════════════ */
 
+static bool java_vm_run_code(const uint8_t *code, int code_len, java_result_t *result) {
+    JVM vm;
+
+    if (!result) {
+        return false;
+    }
+
+    memset(result, 0, sizeof(java_result_t));
+    if (!code || code_len <= 0) {
+        strcpy(result->error, "Program is empty");
+        return false;
+    }
+
+    jvm_init(&vm, code, code_len, result->output, JAVA_OUTPUT_MAX);
+    jvm_run(&vm);
+
+    result->output_len = vm.out_pos;
+    result->success = !vm.error;
+    if (vm.error) {
+        strncpy(result->error, vm.err_msg, 63);
+        result->error[63] = '\0';
+    }
+    return result->success;
+}
+
 extern "C" void java_vm_init(void) {
     /* Nothing to initialize - VM is stateless between runs */
 }
 
 extern "C" bool java_vm_run(const char *demo_name, java_result_t *result) {
-    memset(result, 0, sizeof(java_result_t));
-
     const JavaDemo *demo = (const JavaDemo *)0;
 
     for (int i = 0; i < DEMO_COUNT; i++) {
@@ -419,21 +445,76 @@ extern "C" bool java_vm_run(const char *demo_name, java_result_t *result) {
     }
 
     if (!demo) {
+        memset(result, 0, sizeof(java_result_t));
         strcpy(result->error, "Unknown demo program");
         return false;
     }
 
-    JVM vm;
-    jvm_init(&vm, demo->code, demo->code_len, result->output, JAVA_OUTPUT_MAX);
-    jvm_run(&vm);
+    return java_vm_run_code(demo->code, demo->code_len, result);
+}
 
-    result->output_len = vm.out_pos;
-    result->success = !vm.error;
-    if (vm.error) {
-        strncpy(result->error, vm.err_msg, 63);
-        result->error[63] = '\0';
+extern "C" bool java_vm_run_file(fs_node_t node, java_result_t *result) {
+    int bytes_read;
+    const uint8_t *code = g_java_file_buf;
+    int code_len = 0;
+
+    if (!result) {
+        return false;
     }
-    return result->success;
+
+    memset(result, 0, sizeof(java_result_t));
+
+    if (!fs_is_file(node)) {
+        strcpy(result->error, "Java file not found");
+        return false;
+    }
+
+    bytes_read = fs_read(node, g_java_file_buf, (int)sizeof(g_java_file_buf));
+    if (bytes_read <= 0) {
+        strcpy(result->error, "Java file is empty");
+        return false;
+    }
+
+    if (bytes_read >= 4 &&
+        g_java_file_buf[0] == 'P' &&
+        g_java_file_buf[1] == 'K' &&
+        g_java_file_buf[2] == 0x03 &&
+        g_java_file_buf[3] == 0x04) {
+        strcpy(result->error, "Standard JAR needs ZIP + full JVM");
+        return false;
+    }
+
+    if (bytes_read >= 5 &&
+        g_java_file_buf[0] == 'H' &&
+        g_java_file_buf[1] == 'J' &&
+        g_java_file_buf[2] == 'A' &&
+        g_java_file_buf[3] == 'R') {
+        if (g_java_file_buf[4] != 1) {
+            strcpy(result->error, "Unsupported HeatOS JAR version");
+            return false;
+        }
+        code = &g_java_file_buf[5];
+        code_len = bytes_read - 5;
+    } else {
+        code_len = bytes_read;
+    }
+
+    return java_vm_run_code(code, code_len, result);
+}
+
+extern "C" bool java_vm_run_path(const char *path, java_result_t *result) {
+    fs_node_t node;
+
+    if (!path || !*path) {
+        if (result) {
+            memset(result, 0, sizeof(java_result_t));
+            strcpy(result->error, "Missing Java path");
+        }
+        return false;
+    }
+
+    node = fs_resolve(path);
+    return java_vm_run_file(node, result);
 }
 
 extern "C" int java_vm_demo_count(void) {

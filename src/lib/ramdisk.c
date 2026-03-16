@@ -1,6 +1,8 @@
 #include "ramdisk.h"
 #include "string.h"
 
+static void ramdisk_seed_demo_files(void);
+
 static uint8_t  fs_cwd = 0;
 static uint16_t fs_data_free = 0;
 
@@ -101,6 +103,106 @@ void ramdisk_init(void) {
         (void)fs_mkdir_child(plasma_root, "apps");
         (void)fs_mkdir_child(plasma_root, "config");
         (void)fs_mkdir_child(plasma_root, "session");
+    }
+
+    ramdisk_seed_demo_files();
+}
+
+static void ramdisk_write_demo_file(fs_node_t parent, const char *name, const void *data, int size) {
+    fs_node_t node;
+
+    if (!fs_create_file(parent, name)) {
+        return;
+    }
+
+    node = fs_resolve(name);
+    if (parent != 0) {
+        char path[RAMDISK_NAME_LEN * 2];
+        path[0] = '/';
+        path[1] = '\0';
+        fs_build_path(parent, path, sizeof(path));
+        if (strlen(path) + 1 + strlen(name) + 1 < sizeof(path)) {
+            if (strcmp(path, "/") != 0) strcat(path, "/");
+            strcat(path, name);
+            node = fs_resolve(path);
+        }
+    }
+
+    if (node != 0) {
+        (void)fs_write(node, data, size);
+    }
+}
+
+static void ramdisk_seed_ppm_demo(fs_node_t parent, const char *name) {
+    enum { DEMO_W = 32, DEMO_H = 24, HEADER_LEN = 13, FILE_LEN = HEADER_LEN + DEMO_W * DEMO_H * 3 };
+    uint8_t ppm[FILE_LEN];
+    int pos = 0;
+
+    ppm[pos++] = 'P'; ppm[pos++] = '6'; ppm[pos++] = '\n';
+    ppm[pos++] = '3'; ppm[pos++] = '2'; ppm[pos++] = ' '; ppm[pos++] = '2'; ppm[pos++] = '4'; ppm[pos++] = '\n';
+    ppm[pos++] = '2'; ppm[pos++] = '5'; ppm[pos++] = '5'; ppm[pos++] = '\n';
+
+    for (int y = 0; y < DEMO_H; y++) {
+        for (int x = 0; x < DEMO_W; x++) {
+            uint8_t r = (uint8_t)(40 + x * 5);
+            uint8_t g = (uint8_t)(110 + y * 4);
+            uint8_t b = (uint8_t)(160 + ((x + y) * 2));
+
+            if (x > 9 && x < 22 && y > 7 && y < 18) {
+                r = 245;
+                g = 244;
+                b = 232;
+            }
+
+            ppm[pos++] = r;
+            ppm[pos++] = g;
+            ppm[pos++] = b;
+        }
+    }
+
+    ramdisk_write_demo_file(parent, name, ppm, pos);
+}
+
+static void ramdisk_seed_java_demo(fs_node_t parent, const char *name) {
+    static const uint8_t hjar[] = {
+        'H','J','A','R',1,
+        0xFC, 25,
+        'H','e','a','t','O','S',' ','J','A','R',' ','d','e','m','o',' ','s','t','a','r','t','e','d','\n',
+        0xFC, 18,
+        'R','u','n','n','i','n','g',' ','f','r','o','m',' ','/','j','a','v','a',
+        0xFC, 1, '\n',
+        0x10, 7,
+        0x10, 5,
+        0x60,
+        0xFC, 8,
+        '7',' ','+',' ','5',' ','=',' ',
+        0xFE,
+        0xB1
+    };
+
+    ramdisk_write_demo_file(parent, name, hjar, (int)sizeof(hjar));
+}
+
+static void ramdisk_seed_text_demo(fs_node_t parent, const char *name) {
+    static const char text[] =
+        "HeatOS demo files\n"
+        "- sample.ppm : image preview test\n"
+        "- hello.jar  : HeatOS mini-Java archive\n";
+
+    ramdisk_write_demo_file(parent, name, text, (int)sizeof(text) - 1);
+}
+
+static void ramdisk_seed_demo_files(void) {
+    fs_node_t home = fs_resolve("/home");
+    fs_node_t java = fs_resolve("/java");
+
+    if (home != 0) {
+        ramdisk_seed_ppm_demo(home, "sample.ppm");
+        ramdisk_seed_text_demo(home, "readme.txt");
+    }
+
+    if (java != 0) {
+        ramdisk_seed_java_demo(java, "hello.jar");
     }
 }
 
