@@ -287,11 +287,6 @@ static void read_rtc(int *h, int *m, int *s, int *day, int *mon, int *year) {
 static void banner(void) {
     term_puts_attr("HeatOS Console\n", TERM_TITLE);
     term_puts_attr("========================================\n", TERM_BANNER);
-    term_puts_attr("                                 |\\      _,,,---,,_\n", TERM_BANNER);
-    term_puts_attr("                         ZZZzz /,`.-'`'    -.  ;-;;,_\n", TERM_BANNER);
-    term_puts_attr("                               |,4-  ) )-,_. ,\\ (  `'-'\n", TERM_BANNER);
-    term_puts_attr("                               '---''(_/--'  `-'\\_)\n", TERM_BANNER);
-    term_puts_attr("========================================\n", TERM_BANNER);
     term_puts_attr("Network-aware shell in protected mode\n\n", TERM_BANNER);
 }
 
