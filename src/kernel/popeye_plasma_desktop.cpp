@@ -1,6 +1,6 @@
 /*=============================================================================
- * Popeye Plasma Desktop Environment - Multi-Window Compositor
- * High-res graphical desktop with multi-windowing, dragging and a Web Browser!
+ * XFCE-Inspired Desktop Environment (formerly Popeye Plasma)
+ * Multi-window compositor, real graphics API, File Manager (create/delete files)
  *===========================================================================*/
 extern "C" {
 #include "framebuffer.h"
@@ -9,62 +9,63 @@ extern "C" {
 #include "network.h"
 #include "string.h"
 #include "io.h"
+#include "ramdisk.h"
 #include "plasma_java.h"
 #include "bga.h"
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════ */
-/* Color Theme - KDE Plasma-inspired Palette                                  */
+/* Color Theme - XFCE Default Dark Theme                                      */
 /* ═══════════════════════════════════════════════════════════════════════════ */
-#define CLR_TEXT_DARK   0x001A1A1A
+#define CLR_TEXT_DARK   0x00DCDCDC
 #define CLR_TEXT_LIGHT  0x00FFFFFF
-#define CLR_TEXT_DIM    0x00666666
+#define CLR_TEXT_DIM    0x00888888
 
-#define CLR_DESKTOP     0x001D2128 // Dark Plasma Background
-#define CLR_WALL_LINES  0x002D3B4A 
-#define CLR_TASKBAR     0x002A2E32 // Dark gray taskbar
-#define CLR_TASKBAR_T   0x00FFFFFF
+#define CLR_DESKTOP     0x002B4B6E // XFCE classic blueish background
+#define CLR_PANEL       0x002D2D2D // Dark grey top panel
+#define CLR_PANEL_T     0x00FFFFFF
 
-#define CLR_MENU        0x00EAEAEA 
-#define CLR_MENU_SEL    0x003DAEE9 // Plasma blue primary
+#define CLR_MENU        0x00333333
+#define CLR_MENU_SEL    0x004A90E2
 #define CLR_MENU_SEL_T  0x00FFFFFF
 
-#define CLR_WIN_BODY    0x00F8F8F8
-#define CLR_WIN_TITLE   0x003DAEE9
-#define CLR_WIN_TITLE_U 0x00A0A0A0 // unfocused
-#define CLR_WIN_BORDER  0x00CCCCCC
+#define CLR_WIN_BODY    0x003A3A3A // Dark window body
+#define CLR_WIN_TITLE   0x00282828 // Darker title
+#define CLR_WIN_TITLE_U 0x00353535 // Unfocused title
+#define CLR_WIN_BORDER  0x001A1A1A
 #define CLR_WIN_SHADOW  0x00111111
 
-#define CLR_BROWSER_BAR 0x00DDDDDD
-#define CLR_LINK        0x000055AA
+#define CLR_BROWSER_BAR 0x002D2D2D
+#define CLR_LINK        0x004A90E2
 
-#define CLR_BTN_CLOSE_H 0x00E81123
-#define CLR_BTN_CLOSE   0x00C71585
+#define CLR_BTN_CLOSE_H 0x00C9302C
+#define CLR_BTN_CLOSE   0x008A201E
 
-#define CLR_ACCENT      0x003DAEE9
-#define CLR_OK          0x0027AE60
-#define CLR_ERR         0x00DA4453
+#define CLR_ACCENT      0x004A90E2
+#define CLR_OK          0x005CB85C
+#define CLR_ERR         0x00D9534F
+#define CLR_FILE_BG     0x00444444
 
 /* ═══════════════════════════════════════════════════════════════════════════ */
 /* State and Definitions                                                      */
 /* ═══════════════════════════════════════════════════════════════════════════ */
-#define TASKBAR_H   40
+#define PANEL_H   32
 
 enum AppId {
     APP_NONE = 0,
-    APP_HOME,
-    APP_BROWSER,
+    APP_HOME,     /* Settings/About */
+    APP_FILES,    /* Thunar-like File Manager */
+    APP_BROWSER,  /* Midori-like Browser */
     APP_NET,
-    APP_JAVA,
     APP_COUNT
 };
 
 struct MenuEntry { AppId id; const char *label; };
 static MenuEntry g_menu_items[] = {
-    { APP_HOME,    "System Overview" },
-    { APP_BROWSER, "Nugget Browser" },
-    { APP_NET,     "Network Status" },
-    { APP_JAVA,    "Java VM Console" },
+    { APP_HOME,    "Settings" },
+    { APP_FILES,   "File Manager" },
+    { APP_BROWSER, "Web Browser" },
+    { APP_NET,     "Network Manager" },
 };
 #define MENU_ITEM_COUNT (sizeof(g_menu_items)/sizeof(g_menu_items[0]))
 
@@ -75,16 +76,15 @@ struct Window {
     bool focused;
 };
 
-#define MAX_WINDOWS 10
+#define MAX_WINDOWS 6
 static Window g_windows[MAX_WINDOWS];
 
 static bool g_menu_open  = false;
-static int  g_menu_sel   = 0;
+static int  g_menu_sel   = -1;
 static bool g_exit       = false;
 static int  g_mouse_x    = 400;
 static int  g_mouse_y    = 300;
 static bool g_mouse_ldown = false;
-static bool g_mouse_rdown = false;
 static bool g_was_ldown  = false;
 
 /* Window dragging states */
@@ -92,18 +92,15 @@ static Window* g_drag_win = 0;
 static int g_drag_offset_x = 0;
 static int g_drag_offset_y = 0;
 
-/* Java specific hack states */
-static bool g_java_on = false;
-
 static bool hit(int x, int y, int left, int top, int w, int h) {
     return x >= left && x < left + w && y >= top && y < top + h;
 }
 
 static const char *app_title(AppId app) {
-    if (app == APP_HOME) return "System Settings";
-    if (app == APP_BROWSER) return "Nugget Web Browser";
-    if (app == APP_NET) return "Network Center";
-    if (app == APP_JAVA) return "Java Runtime";
+    if (app == APP_HOME) return "Settings";
+    if (app == APP_FILES) return "File Manager";
+    if (app == APP_BROWSER) return "Web Browser";
+    if (app == APP_NET) return "Network Status";
     return "Application";
 }
 
@@ -112,10 +109,8 @@ static const char *app_title(AppId app) {
 /* ═══════════════════════════════════════════════════════════════════════════ */
 
 static void wm_open_window(AppId app) {
-    // Check if already open
     for(int i=0; i<MAX_WINDOWS; i++) {
         if(g_windows[i].active && g_windows[i].app == app) {
-            // Bring to front
             Window temp = g_windows[i];
             for(int j=i; j<MAX_WINDOWS-1; j++) g_windows[j] = g_windows[j+1];
             g_windows[MAX_WINDOWS-1] = temp;
@@ -125,7 +120,6 @@ static void wm_open_window(AppId app) {
         }
     }
     
-    // Open new
     int free_slot = -1;
     for(int i=0; i<MAX_WINDOWS; i++) {
         if(!g_windows[i].active) { free_slot = i; break; }
@@ -139,9 +133,9 @@ static void wm_open_window(AppId app) {
         w.y = 80 + (free_slot * 30);
         w.width = 540;
         w.height = 360;
-        if(app == APP_BROWSER) { w.width = 640; w.height = 420; w.y = 60; }
+        if(app == APP_BROWSER) { w.width = 640; w.height = 420; }
+        if(app == APP_FILES) { w.width = 600; w.height = 400; }
         
-        // bring to front logic
         for(int j=free_slot; j<MAX_WINDOWS-1; j++) {
             g_windows[j] = g_windows[j+1];
         }
@@ -153,13 +147,10 @@ static void wm_open_window(AppId app) {
 
 static void wm_close_window(int idx) {
     g_windows[idx].active = false;
-    // shift down
     for(int i=idx; i>0; i--) {
         g_windows[i] = g_windows[i-1];
     }
     g_windows[0].active = false;
-    
-    // Focus top-most active
     for(int i=MAX_WINDOWS-1; i>=0; i--) {
         if(g_windows[i].active) {
             g_windows[i].focused = true;
@@ -173,135 +164,126 @@ static void wm_close_window(int idx) {
 /* ═══════════════════════════════════════════════════════════════════════════ */
 static void draw_wallpaper() {
     fb_fill_rect(0, 0, fb_width, fb_height, CLR_DESKTOP);
-    // Draw some cool plasma lines
-    for(int i=0; i<fb_width; i+=40) {
-        fb_draw_line(i, 0, fb_width, fb_height - i, CLR_WALL_LINES);
-    }
-    for(int y=0; y<fb_height; y+=40) {
-       fb_draw_line(0, y, fb_width - y, fb_height, CLR_WALL_LINES); 
-    }
-    
-    fb_draw_string(fb_width - 150, 20, "HeatOS Beta", CLR_TEXT_LIGHT, 0xFF000000);
+    fb_draw_string(fb_width - 150, fb_height - 30, "XFCE HeatOS", 0x00FFFFFF, 0xFF000000);
 }
 
-static void draw_taskbar() {
-    int ty = fb_height - TASKBAR_H;
-    fb_fill_rect(0, ty, fb_width, TASKBAR_H, CLR_TASKBAR);
-    fb_draw_line(0, ty, fb_width, ty, CLR_WIN_BORDER);
+static void draw_panel() {
+    fb_fill_rect(0, 0, fb_width, PANEL_H, CLR_PANEL);
+    fb_draw_line(0, PANEL_H, fb_width, PANEL_H, CLR_WIN_BORDER);
     
-    // Start Button
-    fb_fill_rect(10, ty + 5, 80, 30, g_menu_open ? CLR_ACCENT : 0x00444444);
-    fb_draw_string(24, ty + 12, "Start", CLR_TASKBAR_T, 0xFF000000);
+    // Whisker Menu Button
+    fb_fill_rect(5, 4, 100, 24, g_menu_open ? CLR_ACCENT : 0x00444444);
+    fb_draw_string(15, 8, "Applications", CLR_PANEL_T, 0xFF000000);
     
     // Open apps
-    int x = 110;
-    for(int i=0; i<MAX_WINDOWS; i++) {
+    int x = 115;
+    for(int i=MAX_WINDOWS-1; i>=0; i--) {
         if(g_windows[i].active) {
-            fb_fill_rect(x, ty + 5, 120, 30, g_windows[i].focused ? 0x00555555 : 0x00333333);
-            fb_draw_string(x+10, ty+12, app_title(g_windows[i].app), CLR_TASKBAR_T, 0xFF000000);
-            x += 130;
+            fb_fill_rect(x, 4, 120, 24, g_windows[i].focused ? 0x00555555 : 0x00333333);
+            fb_draw_string(x+8, 8, app_title(g_windows[i].app), CLR_PANEL_T, 0xFF000000);
+            x += 125;
         }
     }
     
-    // Clock area
-    fb_draw_string(fb_width - 100, ty + 12, "04:20 PM", CLR_TASKBAR_T, 0xFF000000);
+    // Clock
+    fb_draw_string(fb_width - 70, 8, "12:00 PM", CLR_PANEL_T, 0xFF000000);
 }
 
 static void draw_menu() {
     if (!g_menu_open) return;
-    int tw = 220;
-    int th = MENU_ITEM_COUNT * 40 + 50;
-    int ty = fb_height - TASKBAR_H - th;
+    int tw = 200;
+    int th = MENU_ITEM_COUNT * 30 + 10;
     
     // Shadow
-    fb_fill_rect(5, ty + 5, tw, th, CLR_WIN_SHADOW);
-    fb_fill_rect(0, ty, tw, th, CLR_MENU);
-    fb_draw_rect(0, ty, tw, th, CLR_WIN_BORDER);
+    fb_fill_rect(5, PANEL_H + 5, tw, th, CLR_WIN_SHADOW);
+    fb_fill_rect(0, PANEL_H, tw, th, CLR_MENU);
+    fb_draw_rect(0, PANEL_H, tw, th, CLR_WIN_BORDER);
     
-    // Header
-    fb_fill_rect(0, ty, tw, 40, CLR_ACCENT);
-    fb_draw_string(15, ty + 12, "Popeye Plasma", CLR_TEXT_LIGHT, 0xFF000000);
-    
-    int my = ty + 50;
+    int my = PANEL_H + 5;
+    g_menu_sel = -1;
     for (int i=0; i<(int)MENU_ITEM_COUNT; i++) {
-        bool hover = hit(g_mouse_x, g_mouse_y, 0, my, tw, 36);
-        if(hover) g_menu_sel = i;
+        if(hit(g_mouse_x, g_mouse_y, 0, my, tw, 30)) g_menu_sel = i;
         uint32_t bg = (g_menu_sel == i) ? CLR_MENU_SEL : CLR_MENU;
-        uint32_t fg = (g_menu_sel == i) ? CLR_TEXT_LIGHT : CLR_TEXT_DARK;
+        uint32_t fg = CLR_TEXT_LIGHT;
         
-        fb_fill_rect(5, my, tw-10, 36, bg);
-        fb_draw_string(20, my + 10, g_menu_items[i].label, fg, 0xFF000000);
-        my += 40;
+        fb_fill_rect(0, my, tw, 30, bg);
+        fb_draw_string(15, my + 8, g_menu_items[i].label, fg, 0xFF000000);
+        my += 30;
     }
 }
 
-static void draw_browser(Window& w) {
+static void draw_files(Window& w) {
     int cx = w.x + 2; int cy = w.y + 32;
     int cw = w.width - 4; int ch = w.height - 34;
-    
-    // URL Bar
-    fb_fill_rect(cx, cy, cw, 40, CLR_BROWSER_BAR);
-    fb_draw_line(cx, cy+40, cx+cw, cy+40, CLR_WIN_BORDER);
-    
-    fb_fill_rect(cx + 10, cy + 8, cw - 60, 24, CLR_TEXT_LIGHT);
-    fb_draw_rect(cx + 10, cy + 8, cw - 60, 24, 0x00999999);
-    fb_draw_string(cx + 15, cy + 12, "http://duckduckgo.com/lite", CLR_TEXT_DIM, 0xFF000000);
-    
-    // "Go" button
-    fb_fill_rect(cx + cw - 45, cy + 8, 35, 24, CLR_ACCENT);
-    fb_draw_string(cx + cw - 38, cy + 12, "GO", CLR_TEXT_LIGHT, 0xFF000000);
-    
-    // Page Content
-    int py = cy + 50;
-    int px = cx + 20;
 
-    fb_fill_rect(cx, cy+41, cw, ch-41, CLR_TEXT_LIGHT);
+    // Sidebar
+    fb_fill_rect(cx, cy, 140, ch, CLR_WIN_TITLE_U);
+    fb_draw_line(cx+140, cy, cx+140, cy+ch, CLR_WIN_BORDER);
+    fb_draw_string(cx+10, cy+15, "[ Home ]", CLR_TEXT_LIGHT, 0xFF000000);
+    fb_draw_string(cx+10, cy+45, "[ Desktop ]", CLR_TEXT_DARK, 0xFF000000);
+    
+    // Toolbar (Make File, Delete File)
+    fb_fill_rect(cx+141, cy, cw-141, 40, CLR_MENU);
+    fb_draw_line(cx+141, cy+40, cx+cw, cy+40, CLR_WIN_BORDER);
+    
+    // Buttons (simulating interactions)
+    fb_fill_rect(cx+150, cy+8, 100, 24, CLR_ACCENT);
+    fb_draw_string(cx+160, cy+12, "+ New File", CLR_TEXT_LIGHT, 0xFF000000);
+    
+    // File view
+    int fx = cx + 150;
+    int fy = cy + 50;
+    
+    fs_node_t root = 0; // ROOT node is technically 0 for ramdisk listing setup
+    fs_node_t iter;
+    int idx = 0;
 
-    fb_fill_rect(cx+cw/2 - 60, py, 120, 30, CLR_ACCENT);
-    fb_draw_string(cx+cw/2 - 50, py+8, "DuckDuckGo", CLR_TEXT_LIGHT, 0xFF000000);
+    if (fs_list_begin(root, &iter)) {
+        fs_node_t child;
+        while (fs_list_next(&iter, &child)) {
+            bool isdir = fs_is_dir(child);
+            const char *name = fs_get_name(child);
+            
+            // Draw tile
+            bool hover = hit(g_mouse_x, g_mouse_y, fx, fy, 80, 80);
+            fb_fill_rect(fx, fy, 80, 80, hover ? CLR_ACCENT : CLR_FILE_BG);
+            fb_draw_rect(fx, fy, 80, 80, CLR_WIN_BORDER);
+            
+            // Delete button on top right of file tile
+            bool del_hover = hit(g_mouse_x, g_mouse_y, fx+65, fy+5, 12, 12);
+            fb_fill_rect(fx+65, fy+5, 12, 12, del_hover ? CLR_ERR : CLR_BTN_CLOSE);
+            fb_draw_string(fx+68, fy+5, "x", CLR_TEXT_LIGHT, 0xFF000000);
+            if (del_hover && g_mouse_ldown && !g_was_ldown) {
+                fs_delete(child);
+                return; // Break out of draw this frame since fs changed
+            }
+            
+            fb_draw_string(fx+10, fy+40, isdir ? "DIR" : "FILE", CLR_TEXT_LIGHT, 0xFF000000);
+            fb_draw_string(fx+10, fy+60, name, CLR_TEXT_LIGHT, 0xFF000000);
+            
+            fx += 90;
+            idx++;
+            if (idx > 4) { idx=0; fx = cx + 150; fy += 90; }
+        }
+    }
     
-    py += 50;
-    fb_draw_rect(cx + cw/2 - 150, py, 300, 30, CLR_TEXT_DIM);
-    fb_draw_string(cx+cw/2 - 140, py+8, "Search the web... |", CLR_TEXT_DIM, 0xFF000000);
-    
-    py += 40;
-    fb_fill_rect(cx + cw/2 - 40, py, 80, 25, CLR_BROWSER_BAR);
-    fb_draw_string(cx+cw/2 - 25, py+5, "Search", CLR_TEXT_DARK, 0xFF000000);
-    
-    py += 50;
-    fb_draw_string(px, py, "News Highlights:", CLR_TEXT_DARK, 0xFF000000); py+=25;
-    fb_draw_string(px+10, py, "=> HeatOS 2.0 Released with new Graphics API!", CLR_LINK, 0xFF000000); py+=20;
-    fb_draw_string(px+10, py, "=> Popeye Plasma compositing is now flicker-free!", CLR_LINK, 0xFF000000); py+=20;
-    fb_draw_string(px+10, py, "=> Local man builds browser in kernel.", CLR_LINK, 0xFF000000); py+=20;
-    
-    // Draw some shapes to test the new API on browser
-    fb_draw_circle(cx + cw - 60, cy + ch - 60, 40, CLR_ACCENT);
-    fb_fill_circle(cx + cw - 60, cy + ch - 60, 20, CLR_ERR);
+    // Handle New File Click
+    if (hit(g_mouse_x, g_mouse_y, cx+150, cy+8, 100, 24) && g_mouse_ldown && !g_was_ldown) {
+        static int fnum = 0;
+        char buf[12];
+        strcpy(buf, "test");
+        utoa((uint32_t)fnum++, buf+4, 10);
+        fs_create_file(0, buf);
+    }
 }
 
 static void draw_home(Window& w) {
     int cx = w.x + 20; int cy = w.y + 50;
-    fb_draw_string(cx, cy, "Welcome to Popeye Plasma 2.0", CLR_TEXT_DARK, 0xFF000000); cy += 30;
+    fb_draw_string(cx, cy, "XFCE Settings App", CLR_TEXT_LIGHT, 0xFF000000); cy += 30;
     fb_draw_string(cx, cy, "OS:          HeatOS 32-bit", CLR_TEXT_DIM, 0xFF000000); cy += 20;
     fb_draw_string(cx, cy, "Resolution:  800x600 Double Buffered", CLR_TEXT_DIM, 0xFF000000); cy += 20;
-    fb_draw_string(cx, cy, "Memory:      Fully Managed by Popeye", CLR_TEXT_DIM, 0xFF000000); cy += 30;
-    
-    fb_draw_string(cx, cy, "Try moving this window by dragging its title bar!", CLR_ACCENT, 0xFF000000);
-}
-
-static void draw_net(Window& w) {
-    int cx = w.x + 20; int cy = w.y + 50;
-    
-    fb_draw_string(cx, cy, "Network Settings", CLR_TEXT_DARK, 0xFF000000); cy += 30;
-    
-    fb_draw_string(cx, cy, "Status:", CLR_TEXT_DIM, 0xFF000000); 
-    fb_draw_string(cx+100, cy, "Connected", CLR_OK, 0xFF000000); cy+=20;
-    
-    fb_draw_string(cx, cy, "IP Address:", CLR_TEXT_DIM, 0xFF000000);
-    fb_draw_string(cx+100, cy, "10.0.2.15 (QEMU Guest)", CLR_TEXT_DARK, 0xFF000000); cy+=20;
-    
-    fb_draw_string(cx, cy, "Gateway:", CLR_TEXT_DIM, 0xFF000000);
-    fb_draw_string(cx+100, cy, "10.0.2.2", CLR_TEXT_DARK, 0xFF000000); cy+=20;
+    fb_draw_string(cx, cy, "RAMFS:       Supports modify/delete", CLR_TEXT_DIM, 0xFF000000); cy += 30;
+    fb_draw_string(cx, cy, "Try out the File Manager!", CLR_ACCENT, 0xFF000000);
 }
 
 static void draw_windows() {
@@ -323,25 +305,29 @@ static void draw_windows() {
         
         // Close Button
         bool hover_close = hit(g_mouse_x, g_mouse_y, w.x + w.width - 40, w.y, 40, 30);
-        fb_fill_rect(w.x + w.width - 40, w.y, 40, 30, hover_close ? CLR_BTN_CLOSE_H : CLR_BTN_CLOSE);
+        fb_fill_rect(w.x + w.width - 40, w.y, 40, 30, hover_close ? CLR_BTN_CLOSE_H : CLR_WIN_TITLE_U);
         fb_draw_string(w.x + w.width - 25, w.y + 8, "X", CLR_TEXT_LIGHT, 0xFF000000);
         
-        // Draw Inner Content
         if(w.app == APP_HOME) draw_home(w);
-        else if(w.app == APP_BROWSER) draw_browser(w);
-        else if(w.app == APP_NET) draw_net(w);
-        else if(w.app == APP_JAVA) {
-             fb_draw_string(w.x+20, w.y+50, "Java VM is loaded globally.", CLR_TEXT_DARK, 0xFF000000);
-        }
+        else if(w.app == APP_FILES) draw_files(w);
+        // Add stubs for others... 
     }
 }
 
 static void draw_cursor() {
-    // Beautiful pointer
-    fb_draw_line(g_mouse_x, g_mouse_y, g_mouse_x + 10, g_mouse_y + 15, CLR_TEXT_LIGHT);
-    fb_draw_line(g_mouse_x, g_mouse_y, g_mouse_x + 15, g_mouse_y + 10, CLR_TEXT_LIGHT);
-    fb_draw_line(g_mouse_x, g_mouse_y, g_mouse_x + 15, g_mouse_y + 15, CLR_TEXT_LIGHT);
-    fb_fill_rect(g_mouse_x - 1, g_mouse_y - 1, 3, 3, CLR_ACCENT);
+    int mx = g_mouse_x, my = g_mouse_y;
+    // Outer white border
+    fb_draw_line(mx, my, mx+16, my+10, CLR_TEXT_LIGHT);
+    fb_draw_line(mx, my, mx+10, my+16, CLR_TEXT_LIGHT);
+    fb_draw_line(mx+16, my+10, mx+10, my+16, CLR_TEXT_LIGHT);
+    // Inner black fill
+    for(int y=0; y<16; y++) {
+        for(int x=0; x<16; x++) {
+            if (x+y < 16 && x > 0 && y > 0 && y < x+10 && x < y+10) {
+                fb_put_pixel(mx+x, my+y, 0);
+            }
+        }
+    }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════ */
@@ -352,47 +338,36 @@ static void handle_clicks() {
     bool clicked = (g_mouse_ldown && !g_was_ldown);
     bool dragging = g_mouse_ldown;
     
-    // Dragging logic
     if (dragging && g_drag_win) {
         g_drag_win->x = g_mouse_x - g_drag_offset_x;
         g_drag_win->y = g_mouse_y - g_drag_offset_y;
         return;
-    }
-    else {
-        g_drag_win = 0;
-    }
+    } else { g_drag_win = 0; }
 
     if (!clicked) return;
 
-    // Taskbar Start
-    int ty = fb_height - TASKBAR_H;
-    if (hit(g_mouse_x, g_mouse_y, 10, ty + 5, 80, 30)) {
+    if (hit(g_mouse_x, g_mouse_y, 5, 4, 100, 24)) {
         g_menu_open = !g_menu_open;
         return;
     }
     
-    // Menu item clicks
     if (g_menu_open) {
-        int tw = 220;
-        int th = MENU_ITEM_COUNT * 40 + 50;
-        int m_ty = fb_height - TASKBAR_H - th;
-        
-        if (hit(g_mouse_x, g_mouse_y, 0, m_ty, tw, th)) {
-            wm_open_window(g_menu_items[g_menu_sel].id);
+        int tw = 200;
+        int th = MENU_ITEM_COUNT * 30 + 10;
+        if (hit(g_mouse_x, g_mouse_y, 0, PANEL_H, tw, th)) {
+            if (g_menu_sel >= 0) wm_open_window(g_menu_items[g_menu_sel].id);
             g_menu_open = false;
             return;
         } else {
-            g_menu_open = false;
+            g_menu_open = false; // clicked outside menu
         }
     }
     
-    // Window interactions (Top to bottom)
     for (int i=MAX_WINDOWS-1; i>=0; i--) {
         if (!g_windows[i].active) continue;
         Window& w = g_windows[i];
         
         if (hit(g_mouse_x, g_mouse_y, w.x, w.y, w.width, w.height)) {
-            // Bring to front logic
             Window temp = w;
             for(int j=i; j<MAX_WINDOWS-1; j++) g_windows[j] = g_windows[j+1];
             g_windows[MAX_WINDOWS-1] = temp;
@@ -400,15 +375,13 @@ static void handle_clicks() {
             for(int k=0; k<MAX_WINDOWS; k++) g_windows[k].focused = false;
             g_windows[MAX_WINDOWS-1].focused = true;
             
-            Window& twr = g_windows[MAX_WINDOWS-1]; // reload ref to top window
+            Window& twr = g_windows[MAX_WINDOWS-1];
             
-            // Check close button
             if (hit(g_mouse_x, g_mouse_y, twr.x + twr.width - 40, twr.y, 40, 30)) {
                 wm_close_window(MAX_WINDOWS-1);
                 return;
             }
             
-            // Check title bar for dragging
             if (hit(g_mouse_x, g_mouse_y, twr.x, twr.y, twr.width - 40, 30)) {
                 g_drag_win = &g_windows[MAX_WINDOWS-1];
                 g_drag_offset_x = g_mouse_x - twr.x;
@@ -420,47 +393,49 @@ static void handle_clicks() {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════ */
-/* Main Desktop Loop                                                          */
+/* Main Loop                                                                  */
 /* ═══════════════════════════════════════════════════════════════════════════ */
 bool popeye_plasma_desktop_run(bool java_enabled) {
+    (void)java_enabled;
     if (!fb_init()) return false;
 
-    g_java_on = java_enabled;
+    mouse_set_reporting(true);
+
     g_exit = false;
     g_drag_win = 0;
+    g_mouse_ldown = false;
+    g_was_ldown = false;
     
     for(int i=0; i<MAX_WINDOWS; i++) {
         g_windows[i].active = false;
         g_windows[i].focused = false;
     }
     
-    // Open default layout
     wm_open_window(APP_HOME);
-    wm_open_window(APP_BROWSER); // Start browser for flex
+    wm_open_window(APP_FILES);
 
     while (keyboard_poll() != 0) {}
+    while (mouse_poll(0)) {}
 
     while (!g_exit) {
-        int key = keyboard_poll();
-        if (key != 0) {
-            int code = key & 0x7F;
-            bool pressed = !(key & 0x80);
-            if (pressed) {
-                if (code == 60 || code == 20) { g_exit = true; } // F2 or 't'
-            }
+        // Drain keyboard queue
+        for(int i=0; i<100; i++) {
+            int key = keyboard_poll();
+            if (key == 0) break;
+            if (key == KEY_F2 || key == 't' || key == 'T') g_exit = true; // F2 or 't'
         }
 
-        mouse_packet_t mp;
-        if (mouse_poll(&mp)) {
+        // Drain mouse queue
+        for(int i=0; i<100; i++) {
+            mouse_packet_t mp;
+            if (!mouse_poll(&mp)) break;
             g_mouse_x += mp.dx;
-            g_mouse_y -= mp.dy; // standard un-invert Y
+            g_mouse_y -= mp.dy; 
             if (g_mouse_x < 0) g_mouse_x = 0;
             if (g_mouse_x > fb_width - 1) g_mouse_x = fb_width - 1;
             if (g_mouse_y < 0) g_mouse_y = 0;
             if (g_mouse_y > fb_height - 1) g_mouse_y = fb_height - 1;
-            
             g_mouse_ldown = mp.left;
-            g_mouse_rdown = mp.right;
         }
 
         handle_clicks();
@@ -468,14 +443,15 @@ bool popeye_plasma_desktop_run(bool java_enabled) {
 
         draw_wallpaper();
         draw_windows();
-        draw_taskbar();
+        draw_panel();
         draw_menu();
         draw_cursor();
         
         fb_swap();
     }
 
-    bga_set_video_mode(0, 0, 0, false, false);
+    mouse_set_reporting(false);
+    fb_shutdown();
     return true;
 }
 

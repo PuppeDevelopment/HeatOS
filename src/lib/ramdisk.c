@@ -289,6 +289,31 @@ bool fs_create_file(fs_node_t parent, const char *name) {
     return true;
 }
 
+bool fs_delete(fs_node_t node) {
+    if (node == 0 || node >= RAMDISK_MAX_NODES || fs_node_type[node] == FS_TYPE_FREE) return false;
+    
+    // Disallow deleting non-empty directories for simplicity
+    if (fs_node_type[node] == FS_TYPE_DIR && fs_node_first_child[node] != 0) return false;
+
+    fs_node_t parent = fs_node_parent[node];
+    if (parent != 0) {
+        fs_node_t cur = fs_node_first_child[parent];
+        if (cur == node) {
+            fs_node_first_child[parent] = fs_node_next_sibling[node];
+        } else {
+            while (cur != 0 && fs_node_next_sibling[cur] != node) {
+                cur = fs_node_next_sibling[cur];
+            }
+            if (cur != 0) {
+                fs_node_next_sibling[cur] = fs_node_next_sibling[node];
+            }
+        }
+    }
+    
+    fs_node_type[node] = FS_TYPE_FREE;
+    return true;
+}
+
 int fs_read(fs_node_t node, void *buf, int size) {
     if (node >= RAMDISK_MAX_NODES || !fs_is_file(node) || !buf)
         return -1;

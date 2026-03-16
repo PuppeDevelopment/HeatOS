@@ -10,6 +10,7 @@
 #define PS2_STATUS_AUX  0x20
 
 #define MOUSE_ACK       0xFA
+#define MOUSE_RESEND    0xFE
 
 static bool g_mouse_ready = false;
 static bool g_reporting_enabled = false;
@@ -28,6 +29,26 @@ static bool ps2_wait_output_full(void) {
     return guard != 0u;
 }
 
+static bool ps2_read_aux_byte(uint8_t *out) {
+    uint32_t guard = 100000u;
+
+    while (guard--) {
+        uint8_t status = inb(PS2_STATUS_PORT);
+        if ((status & PS2_STATUS_OBF) == 0)
+            continue;
+
+        uint8_t data = inb(PS2_DATA_PORT);
+        if ((status & PS2_STATUS_AUX) == 0)
+            continue;
+
+        if (out)
+            *out = data;
+        return true;
+    }
+
+    return false;
+}
+
 static void ps2_flush_output(void) {
     uint32_t guard = 64u;
     while ((inb(PS2_STATUS_PORT) & PS2_STATUS_OBF) && guard--) {
@@ -42,13 +63,23 @@ static bool ps2_write_cmd(uint8_t cmd) {
 }
 
 static bool mouse_send_cmd(uint8_t cmd) {
-    if (!ps2_write_cmd(0xD4)) return false;
-    if (!ps2_wait_input_clear()) return false;
-    outb(PS2_DATA_PORT, cmd);
+    for (int attempt = 0; attempt < 3; attempt++) {
+        if (!ps2_write_cmd(0xD4)) return false;
+        if (!ps2_wait_input_clear()) return false;
+        outb(PS2_DATA_PORT, cmd);
 
-    if (!ps2_wait_output_full()) return false;
-    uint8_t ack = inb(PS2_DATA_PORT);
-    return ack == MOUSE_ACK;
+        uint8_t reply = 0;
+        if (!ps2_read_aux_byte(&reply))
+            continue;
+
+        if (reply == MOUSE_ACK)
+            return true;
+
+        if (reply != MOUSE_RESEND)
+            break;
+    }
+
+    return false;
 }
 
 bool mouse_init(void) {
@@ -58,18 +89,20 @@ bool mouse_init(void) {
 
     ps2_flush_output();
 
-    if (!ps2_write_cmd(0xA8)) return false; /* Enable auxiliary device */
+    if (!ps2_write_cmd(0xA8)) return false; /* Enable auxiliary device */       
 
-    if (!ps2_write_cmd(0x20)) return false; /* Read controller command byte */
+    if (!ps2_write_cmd(0x20)) return false; /* Read controller command byte */  
     if (!ps2_wait_output_full()) return false;
     uint8_t cmd_byte = inb(PS2_DATA_PORT);
 
     cmd_byte |= 0x02;               /* Enable IRQ12 routing */
     cmd_byte &= (uint8_t)~0x20u;    /* Enable mouse clock */
 
-    if (!ps2_write_cmd(0x60)) return false; /* Write controller command byte */
+    if (!ps2_write_cmd(0x60)) return false; /* Write controller command byte */ 
     if (!ps2_wait_input_clear()) return false;
     outb(PS2_DATA_PORT, cmd_byte);
+
+    ps2_flush_output();
 
     if (!mouse_send_cmd(0xF6)) return false; /* Set defaults */
     if (!mouse_send_cmd(0xF4)) return false; /* Enable data reporting */
@@ -98,39 +131,47 @@ void mouse_set_reporting(bool enabled) {
 }
 
 bool mouse_poll(mouse_packet_t *out) {
-    if (!g_mouse_ready || !g_reporting_enabled) return false;
+    while (1) {
+        uint8_t status = inb(PS2_STATUS_PORT);
+        if (!(status & PS2_STATUS_OBF) || !(status & PS2_STATUS_AUX)) {
+            break;
+        }
 
-    uint8_t status = inb(PS2_STATUS_PORT);
-    if (!(status & PS2_STATUS_OBF) || !(status & PS2_STATUS_AUX)) {
-        return false;
+        uint8_t b = inb(PS2_DATA_PORT);
+
+        if (b == MOUSE_ACK || b == MOUSE_RESEND)
+            continue;
+
+        if (!g_mouse_ready || !g_reporting_enabled)
+            continue;
+
+        if (g_pkt_idx == 0 && (b & 0x08u) == 0u) {
+            continue;
+        }
+
+        g_pkt[g_pkt_idx++] = b;
+        if (g_pkt_idx < 3) {
+            continue;
+        }
+
+        g_pkt_idx = 0;
+
+        int16_t dx = (g_pkt[0] & 0x10u) ? (int16_t)((int)g_pkt[1] - 256) : (int16_t)g_pkt[1];
+        int16_t dy = (g_pkt[0] & 0x20u) ? (int16_t)((int)g_pkt[2] - 256) : (int16_t)g_pkt[2];
+
+        if (g_pkt[0] & 0x40u) dx = 0; /* X overflow */
+        if (g_pkt[0] & 0x80u) dy = 0; /* Y overflow */
+
+        if (out) {
+            out->dx = dx;
+            out->dy = dy;
+            out->left = (g_pkt[0] & 0x01u) != 0u;
+            out->right = (g_pkt[0] & 0x02u) != 0u;
+            out->middle = (g_pkt[0] & 0x04u) != 0u;
+        }
+
+        return true;
     }
 
-    uint8_t b = inb(PS2_DATA_PORT);
-
-    if (g_pkt_idx == 0 && (b & 0x08u) == 0u) {
-        return false;
-    }
-
-    g_pkt[g_pkt_idx++] = b;
-    if (g_pkt_idx < 3) {
-        return false;
-    }
-
-    g_pkt_idx = 0;
-
-    int16_t dx = (g_pkt[0] & 0x10u) ? (int16_t)((int)g_pkt[1] - 256) : (int16_t)g_pkt[1];
-    int16_t dy = (g_pkt[0] & 0x20u) ? (int16_t)((int)g_pkt[2] - 256) : (int16_t)g_pkt[2];
-
-    if (g_pkt[0] & 0x40u) dx = 0; /* X overflow */
-    if (g_pkt[0] & 0x80u) dy = 0; /* Y overflow */
-
-    if (out) {
-        out->dx = dx;
-        out->dy = dy;
-        out->left = (g_pkt[0] & 0x01u) != 0u;
-        out->right = (g_pkt[0] & 0x02u) != 0u;
-        out->middle = (g_pkt[0] & 0x04u) != 0u;
-    }
-
-    return true;
+    return false;
 }

@@ -7,6 +7,7 @@ extern uint16_t fb_width;
 extern uint16_t fb_height;
 
 bool fb_init(void);
+void fb_shutdown(void);
 void fb_put_pixel(int x, int y, uint32_t color);
 void fb_fill_rect(int x, int y, int w, int h, uint32_t color);
 void fb_draw_rect(int x, int y, int w, int h, uint32_t color);

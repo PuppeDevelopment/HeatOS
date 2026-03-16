@@ -33,6 +33,7 @@ void        fs_build_path(fs_node_t node, char *buf, size_t buf_size);
 const char *fs_get_name(fs_node_t node);
 
 bool      fs_create_file(fs_node_t parent, const char *name);
+bool      fs_delete(fs_node_t node);
 int       fs_read(fs_node_t node, void *buf, int size);
 bool      fs_write(fs_node_t node, const void *buf, int size);
 

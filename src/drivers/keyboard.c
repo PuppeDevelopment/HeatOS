@@ -1,4 +1,5 @@
 #include "keyboard.h"
+#include "mouse.h"
 #include "io.h"
 
 #define KB_DATA_PORT   0x60
@@ -29,91 +30,115 @@ static const char scancode_shift[128] = {
     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
 };
 
-static bool shift_held = false;
+static bool g_shift_left = false;
+static bool g_shift_right = false;
+static bool g_extended = false;
+
+static bool shift_held(void) {
+    return g_shift_left || g_shift_right;
+}
 
 void keyboard_init(void) {
+    g_shift_left = false;
+    g_shift_right = false;
+    g_extended = false;
+
     /* Flush the keyboard buffer */
     while (inb(KB_STATUS_PORT) & KB_STATUS_OBF)
         inb(KB_DATA_PORT);
 }
 
 bool keyboard_has_key(void) {
-    uint8_t status = inb(KB_STATUS_PORT);
-    return (status & KB_STATUS_OBF) != 0 && (status & KB_STATUS_AUX) == 0;
+    for (;;) {
+        uint8_t status = inb(KB_STATUS_PORT);
+        if ((status & KB_STATUS_OBF) == 0)
+            return false;
+
+        if (status & KB_STATUS_AUX) {
+            while (mouse_poll(0)) {}
+            continue;
+        }
+
+        return true;
+    }
 }
 
 int keyboard_poll(void) {
-    uint8_t status = inb(KB_STATUS_PORT);
-    if (!(status & KB_STATUS_OBF))
-        return 0;
+    for (;;) {
+        uint8_t status = inb(KB_STATUS_PORT);
+        if ((status & KB_STATUS_OBF) == 0)
+            return 0;
 
-    /* If controller output belongs to AUX (mouse), drain and ignore it here. */
-    if (status & KB_STATUS_AUX) {
-        return 0;
-    }
-
-    uint8_t sc = inb(KB_DATA_PORT);
-
-    /* Handle extended scancodes (0xE0 prefix) */
-    if (sc == 0xE0) {
-        /* Wait for the actual keyboard scancode and skip AUX bytes. */
-        uint32_t guard = 100000u;
-        while (guard--) {
-            status = inb(KB_STATUS_PORT);
-            if (!(status & KB_STATUS_OBF)) continue;
-            if (status & 0x20) {
-                (void)inb(KB_DATA_PORT);
-                continue;
-            }
-            sc = inb(KB_DATA_PORT);
-            goto decode_extended;
+        /* Keep mouse packets flowing so AUX bytes never block keyboard input. */
+        if (status & KB_STATUS_AUX) {
+            while (mouse_poll(0)) {}
+            continue;
         }
-        return 0;
 
-decode_extended:
+        uint8_t sc = inb(KB_DATA_PORT);
 
-        if (sc & 0x80) return 0;   /* extended key release */
+        if (sc == 0xE0) {
+            g_extended = true;
+            continue;
+        }
 
-        switch (sc) {
+        if (sc == 0xE1) {
+            g_extended = false;
+            continue;
+        }
+
+        bool released = (sc & 0x80u) != 0u;
+        uint8_t code = (uint8_t)(sc & 0x7Fu);
+
+        if (code == 0x2A) {
+            g_shift_left = !released;
+            continue;
+        }
+
+        if (code == 0x36) {
+            g_shift_right = !released;
+            continue;
+        }
+
+        if (released) {
+            g_extended = false;
+            continue;
+        }
+
+        if (g_extended) {
+            g_extended = false;
+            switch (code) {
+                case 0x48: return KEY_UP;
+                case 0x50: return KEY_DOWN;
+                case 0x4B: return KEY_LEFT;
+                case 0x4D: return KEY_RIGHT;
+                default: continue;
+            }
+        }
+
+        switch (code) {
+            case 0x01: return KEY_ESCAPE;
+            case 0x0E: return KEY_BACKSPACE;
+            case 0x0F: return KEY_TAB;
+            case 0x1C: return KEY_ENTER;
+            case 0x3B: return KEY_F1;
+            case 0x3C: return KEY_F2;
+            case 0x3D: return KEY_F3;
+            case 0x3E: return KEY_F4;
+            case 0x44: return KEY_F10;
             case 0x48: return KEY_UP;
             case 0x50: return KEY_DOWN;
             case 0x4B: return KEY_LEFT;
             case 0x4D: return KEY_RIGHT;
+            default: break;
         }
-        return 0;
-    }
 
-    /* Key release (bit 7 set) */
-    if (sc & 0x80) {
-        uint8_t released = sc & 0x7F;
-        if (released == 0x2A || released == 0x36) shift_held = false;
-        return 0;
+        if (code < 128) {
+            char c = shift_held() ? scancode_shift[code] : scancode_ascii[code];
+            if (c)
+                return (int)(uint8_t)c;
+        }
     }
-
-    /* Shift press */
-    if (sc == 0x2A || sc == 0x36) { shift_held = true; return 0; }
-
-    /* Special keys */
-    switch (sc) {
-        case 0x01: return KEY_ESCAPE;
-        case 0x0E: return KEY_BACKSPACE;
-        case 0x0F: return KEY_TAB;
-        case 0x1C: return KEY_ENTER;
-        case 0x3B: return KEY_F1;
-        case 0x3C: return KEY_F2;
-        case 0x3D: return KEY_F3;
-        case 0x3E: return KEY_F4;
-        case 0x44: return KEY_F10;
-        case 0x48: return KEY_UP;
-        case 0x50: return KEY_DOWN;
-    }
-
-    /* Regular ASCII */
-    if (sc < 128) {
-        char c = shift_held ? scancode_shift[sc] : scancode_ascii[sc];
-        if (c) return (int)(uint8_t)c;
-    }
-    return 0;
 }
 
 int keyboard_wait(void) {

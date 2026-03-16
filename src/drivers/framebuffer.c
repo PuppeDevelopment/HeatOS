@@ -1,5 +1,6 @@
 #include "framebuffer.h"
 #include "bga.h"
+#include "virtio_gpu.h"
 #include "font_8x16.h"
 #include "string.h"
 
@@ -9,19 +10,47 @@ static volatile uint32_t *fb = 0;
 /* Allocate backbuffer at 4MB mark to avoid clobbering lower memory in real/early protected mode */
 static uint32_t *backbuffer = (uint32_t *)0x00400000;
 
+typedef enum {
+    FB_BACKEND_NONE = 0,
+    FB_BACKEND_BGA,
+    FB_BACKEND_VIRTIO_GPU,
+} fb_backend_t;
+
+static fb_backend_t g_backend = FB_BACKEND_NONE;
+
 bool fb_init(void) {
-    uint32_t phys = bga_get_framebuffer();
-    if (!phys) return false;
-    fb = (volatile uint32_t *)phys;
-    bga_set_video_mode(800, 600, 32, true, true);
     fb_width = 800;
     fb_height = 600;
-    
+
     // Clear backbuffer
     memset(backbuffer, 0, fb_width * fb_height * 4);
+
+    if (virtio_gpu_init(fb_width, fb_height, backbuffer)) {
+        g_backend = FB_BACKEND_VIRTIO_GPU;
+        fb_swap();
+        return true;
+    }
+
+    uint32_t phys = bga_get_framebuffer();
+    if (!phys) return false;
+
+    fb = (volatile uint32_t *)phys;
+    bga_set_video_mode(800, 600, 32, true, true);
+    g_backend = FB_BACKEND_BGA;
     fb_swap(); // Clear frontbuffer too
     
     return true;
+}
+
+void fb_shutdown(void) {
+    if (g_backend == FB_BACKEND_VIRTIO_GPU) {
+        virtio_gpu_shutdown();
+    } else if (g_backend == FB_BACKEND_BGA) {
+        bga_set_video_mode(0, 0, 0, false, false);
+    }
+
+    g_backend = FB_BACKEND_NONE;
+    fb = 0;
 }
 
 void fb_put_pixel(int x, int y, uint32_t color) {
@@ -145,6 +174,11 @@ void fb_draw_string(int x, int y, const char *s, uint32_t fg, uint32_t bg) {
 }
 
 void fb_swap(void) {
+    if (g_backend == FB_BACKEND_VIRTIO_GPU) {
+        virtio_gpu_present();
+        return;
+    }
+
     if (!fb) return;
-    memcpy((void*)fb, backbuffer, 800 * 600 * 4);
+    memcpy((void*)fb, backbuffer, fb_width * fb_height * 4);
 }

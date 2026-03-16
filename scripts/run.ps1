@@ -1,7 +1,9 @@
 param(
     [switch]$SkipBuild,
     [switch]$BootIso,
-    [switch]$NoNetwork
+    [switch]$NoNetwork,
+    [ValidateSet("virtio", "bga")]
+    [string]$DisplayBackend = "virtio"
 )
 
 $ErrorActionPreference = "Stop"
@@ -89,6 +91,10 @@ try {
     }
 
     $qemuArgs += @("-m", "64M")
+
+    if ($DisplayBackend -ieq "virtio") {
+        $qemuArgs += @("-vga", "none", "-device", "virtio-vga,max_outputs=1")
+    }
 
     if (-not $NoNetwork) {
         $qemuArgs += @("-nic", "user,model=ne2k_pci")
