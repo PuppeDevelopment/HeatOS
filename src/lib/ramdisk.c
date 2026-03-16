@@ -92,7 +92,16 @@ void ramdisk_init(void) {
     (void)fs_mkdir_child(0, "apps");
     (void)fs_mkdir_child(0, "docs");
     (void)fs_mkdir_child(0, "home");
+    (void)fs_mkdir_child(0, "java");
+    (void)fs_mkdir_child(0, "plasma");
     (void)fs_mkdir_child(0, "system");
+
+    fs_node_t plasma_root = fs_resolve("/plasma");
+    if (plasma_root != 0) {
+        (void)fs_mkdir_child(plasma_root, "apps");
+        (void)fs_mkdir_child(plasma_root, "config");
+        (void)fs_mkdir_child(plasma_root, "session");
+    }
 }
 
 fs_node_t fs_resolve(const char *path) {

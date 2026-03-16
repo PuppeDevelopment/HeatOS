@@ -41,7 +41,40 @@ void *memset(void *dst, int val, size_t n) {
 void *memcpy(void *dst, const void *src, size_t n) {
     uint8_t *d = (uint8_t *)dst;
     const uint8_t *s = (const uint8_t *)src;
-    while (n--) *d++ = *s++;
+
+    if (d == s || n == 0) return dst;
+
+    /* Align both pointers for wider copies first. */
+    while (n && ((((uint32_t)(size_t)d) & 3u) || (((uint32_t)(size_t)s) & 3u))) {
+        *d++ = *s++;
+        n--;
+    }
+
+    uint32_t *dw = (uint32_t *)d;
+    const uint32_t *sw = (const uint32_t *)s;
+
+    while (n >= 16) {
+        dw[0] = sw[0];
+        dw[1] = sw[1];
+        dw[2] = sw[2];
+        dw[3] = sw[3];
+        dw += 4;
+        sw += 4;
+        n -= 16;
+    }
+
+    while (n >= 4) {
+        *dw++ = *sw++;
+        n -= 4;
+    }
+
+    d = (uint8_t *)dw;
+    s = (const uint8_t *)sw;
+
+    while (n--) {
+        *d++ = *s++;
+    }
+
     return dst;
 }
 

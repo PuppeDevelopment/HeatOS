@@ -5,11 +5,15 @@
 #include "vga.h"
 #include "keyboard.h"
 #include "terminal.h"
+#include "popeye_plasma.h"
 
 void kernel_main(void) {
     vga_init();
     keyboard_init();
-    terminal_run();     /* never returns */
+    popeye_plasma_init();
+
+    /* Always boot to terminal. Desktop is launched via 'popeye boot plasma'. */
+    terminal_run();
 
     for (;;)
         __asm__ volatile("hlt");

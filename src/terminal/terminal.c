@@ -10,6 +10,8 @@
 #include "ramdisk.h"
 #include "network.h"
 #include "catnake.h"
+#include "popeye_plasma.h"
+#include "plasma_java.h"
 
 /* -------------------------------------------------------------------------- */
 /* Color theme                                                                 */
@@ -299,6 +301,8 @@ static void cmd_help(void) {
     term_putln("  catnake");
     term_putln("  ls        cd          pwd         mkdir");
     term_putln("  net       ping <ipv4|domain>   arch");
+    term_putln("  java [status|enable|run <demo>|demos]");
+    term_putln("  popeye boot plasma    (launch desktop)");
     term_putln("  halt/shutdown  reboot/restart");
     term_putln("Tip: Up/Down arrows scroll history, Esc clears input.");
     term_putc('\n', TERM_NORMAL);
@@ -443,12 +447,134 @@ static void cmd_catnake(void) {
     term_puts_attr("Terminal ready.\n\n", TERM_PROMPT);
 }
 
+static void cmd_plasma(const char *args) {
+    while (*args == ' ') args++;
+
+    if (*args == '\0' || strcmp(args, "status") == 0) {
+        term_puts_attr("Popeye Plasma:\n", TERM_TITLE);
+        term_puts("  name:      "); term_putln(popeye_plasma_name());
+        term_puts("  module:    "); term_putln(popeye_plasma_is_ready() ? "initialized" : "offline");
+        term_puts("  boot:      "); term_putln(popeye_plasma_boot_mode());
+        term_puts("  release:   ");
+        term_putln(popeye_plasma_desktop_boot_allowed() ? "desktop-ready" : "terminal-lock");
+        term_puts("  java:      "); term_putln(popeye_plasma_java_support_mode());
+        term_putc('\n', TERM_NORMAL);
+        return;
+    }
+
+    if (strcmp(args, "boot terminal") == 0) {
+        popeye_plasma_set_boot_desktop(false);
+        term_putln("Popeye Plasma next boot: terminal-first.");
+        return;
+    }
+
+    if (strcmp(args, "boot desktop") == 0) {
+        popeye_plasma_set_boot_desktop(true);
+        term_putln("Popeye Plasma next boot: desktop-first.");
+        return;
+    }
+
+    if (strcmp(args, "start") == 0) {
+        term_putln("Launching Popeye Plasma...");
+        (void)popeye_plasma_run();
+        term_clear_screen();
+        banner();
+        term_puts_attr("Returned from Popeye Plasma.\n\n", TERM_PROMPT);
+        return;
+    }
+
+    term_putln("Usage: plasma [status|boot terminal|boot desktop|start]");
+}
+
+static void cmd_java(const char *args) {
+    while (*args == ' ') args++;
+
+    if (*args == '\0' || strcmp(args, "status") == 0) {
+        term_puts_attr("Java Support:\n", TERM_TITLE);
+        term_puts("  enabled: ");
+        term_putln(popeye_plasma_java_support_enabled() ? "yes" : "no");
+        term_puts("  mode:    "); term_putln(popeye_plasma_java_support_mode());
+        term_puts("  runtime: HeatOS Mini JVM\n");
+        term_puts("  demos:   ");
+        for (int i = 0; i < java_vm_demo_count(); i++) {
+            if (i) term_puts(", ");
+            term_puts(java_vm_demo_name(i));
+        }
+        term_putc('\n', TERM_NORMAL);
+        term_putc('\n', TERM_NORMAL);
+        return;
+    }
+
+    if (strcmp(args, "enable") == 0) {
+        (void)popeye_plasma_enable_java_support();
+        java_vm_init();
+        term_putln("Java support enabled. Bytecode VM ready.");
+        return;
+    }
+
+    if (strncmp(args, "run", 3) == 0) {
+        const char *name = args + 3;
+        while (*name == ' ') name++;
+        if (!*name) name = "hello";
+
+        java_result_t result;
+        term_puts("Running Java demo: "); term_putln(name);
+        term_putc('\n', TERM_NORMAL);
+
+        if (java_vm_run(name, &result)) {
+            term_puts(result.output);
+        } else {
+            term_puts("Error: "); term_putln(result.error);
+        }
+        term_putc('\n', TERM_NORMAL);
+        return;
+    }
+
+    if (strcmp(args, "demos") == 0) {
+        term_puts_attr("Available Java demos:\n", TERM_TITLE);
+        for (int i = 0; i < java_vm_demo_count(); i++) {
+            term_puts("  "); term_putln(java_vm_demo_name(i));
+        }
+        term_putc('\n', TERM_NORMAL);
+        return;
+    }
+
+    term_putln("Usage: java [status|enable|run <demo>|demos]");
+}
+
+static void cmd_popeye(const char *args) {
+    while (*args == ' ') args++;
+
+    if (strcmp(args, "boot plasma") == 0) {
+        term_putln("Launching Popeye Plasma Desktop...");
+        (void)popeye_plasma_run();
+        term_clear_screen();
+        banner();
+        term_puts_attr("Returned from Popeye Plasma.\n\n", TERM_PROMPT);
+        return;
+    }
+
+    if (*args == '\0' || strcmp(args, "status") == 0) {
+        term_puts_attr("Popeye Plasma:\n", TERM_TITLE);
+        term_puts("  name:      "); term_putln(popeye_plasma_name());
+        term_puts("  module:    "); term_putln(popeye_plasma_is_ready() ? "ready" : "offline");
+        term_puts("  java:      "); term_putln(popeye_plasma_java_support_mode());
+        term_putc('\n', TERM_NORMAL);
+        term_putln("  Launch desktop: popeye boot plasma");
+        term_putc('\n', TERM_NORMAL);
+        return;
+    }
+
+    term_putln("Usage: popeye [boot plasma|status]");
+}
+
 static void cmd_apps(void) {
     term_puts_attr("Terminal commands:\n", TERM_TITLE);
     term_putln("  help, clear, about, version, echo, banner, beep");
     term_putln("  date, time, uptime, mem, boot, status, history");
     term_putln("  net, ping <ipv4|domain>, arch, ls, cd, pwd, mkdir");
-    term_putln("  catnake");
+    term_putln("  java [status|enable|run <demo>|demos]");
+    term_putln("  popeye boot plasma    catnake");
     term_putln("  halt, shutdown, reboot, restart");
     term_putc('\n', TERM_NORMAL);
 }
@@ -736,6 +862,9 @@ void terminal_run(void) {
         else if (strcmp(cmd, "net")      == 0) cmd_net();
         else if (strcmp(cmd, "ping")     == 0) cmd_ping(args);
         else if (strcmp(cmd, "arch")     == 0) cmd_arch();
+        else if (strcmp(cmd, "plasma")   == 0) cmd_plasma(args);
+        else if (strcmp(cmd, "popeye")   == 0) cmd_popeye(args);
+        else if (strcmp(cmd, "java")     == 0) cmd_java(args);
         else if (strcmp(cmd, "apps")     == 0) cmd_apps();
         else if (strcmp(cmd, "catnake")  == 0) cmd_catnake();
         else if (strcmp(cmd, "ls")       == 0) cmd_ls();

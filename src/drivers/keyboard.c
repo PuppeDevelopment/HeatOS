@@ -4,6 +4,7 @@
 #define KB_DATA_PORT   0x60
 #define KB_STATUS_PORT 0x64
 #define KB_STATUS_OBF  0x01    /* Output buffer full */
+#define KB_STATUS_AUX  0x20    /* Data from mouse (AUX) */
 
 /* US QWERTY scancode set 1 -> ASCII (lowercase) */
 static const char scancode_ascii[128] = {
@@ -37,21 +38,39 @@ void keyboard_init(void) {
 }
 
 bool keyboard_has_key(void) {
-    return (inb(KB_STATUS_PORT) & KB_STATUS_OBF) != 0;
+    uint8_t status = inb(KB_STATUS_PORT);
+    return (status & KB_STATUS_OBF) != 0 && (status & KB_STATUS_AUX) == 0;
 }
 
 int keyboard_poll(void) {
-    if (!(inb(KB_STATUS_PORT) & KB_STATUS_OBF))
+    uint8_t status = inb(KB_STATUS_PORT);
+    if (!(status & KB_STATUS_OBF))
         return 0;
+
+    /* If controller output belongs to AUX (mouse), drain and ignore it here. */
+    if (status & KB_STATUS_AUX) {
+        return 0;
+    }
 
     uint8_t sc = inb(KB_DATA_PORT);
 
     /* Handle extended scancodes (0xE0 prefix) */
     if (sc == 0xE0) {
-        /* Wait for the actual scancode */
-        while (!(inb(KB_STATUS_PORT) & KB_STATUS_OBF))
-            ;
-        sc = inb(KB_DATA_PORT);
+        /* Wait for the actual keyboard scancode and skip AUX bytes. */
+        uint32_t guard = 100000u;
+        while (guard--) {
+            status = inb(KB_STATUS_PORT);
+            if (!(status & KB_STATUS_OBF)) continue;
+            if (status & 0x20) {
+                (void)inb(KB_DATA_PORT);
+                continue;
+            }
+            sc = inb(KB_DATA_PORT);
+            goto decode_extended;
+        }
+        return 0;
+
+decode_extended:
 
         if (sc & 0x80) return 0;   /* extended key release */
 
