@@ -67,15 +67,15 @@ static pt_t catnake_place_food(const pt_t *body, int len) {
     return f;
 }
 
-static void catnake_render_all(const pt_t *body, int len, pt_t food, int score, bool dead) {
+static void catnake_render_all(const pt_t *body, int len, pt_t food, int score, bool dead, pt_t old_tail) {
     uint8_t bg = VGA_ATTR(VGA_WHITE, VGA_BLACK);
     
-    // Fast clear game area
-    for (int y = 0; y < CATNAKE_HEIGHT; y++)
-        for (int x = 0; x < CATNAKE_WIDTH; x++)
-            catnake_draw_cell(x, y, ' ', bg);
+    // Optimize: only clear the old tail segment instead of the whole screen
+    if (old_tail.x != -1) {
+        catnake_draw_cell(old_tail.x, old_tail.y, ' ', bg);
+    }
             
-    catnake_draw_border();
+    // catnake_draw_border(); // Borders drawn once initially below
     
     vga_write_at(1, 2, "Catnake Deluxe  (WASD/Arrows)  Esc=Quit", VGA_ATTR(VGA_WHITE, VGA_BLACK));
     vga_write_at(1, 45, "Score:", VGA_ATTR(VGA_WHITE, VGA_BLACK));
@@ -130,8 +130,10 @@ void catnake_run() {
         
         pt_t food = catnake_place_food(body, len);
         vga_clear(VGA_ATTR(VGA_WHITE, VGA_BLACK));
+        catnake_draw_border();
         bool dead = false;
         pending_input = 0;
+        pt_t old_tail = {-1, -1};
 
         for (;;) {
             int k;
@@ -164,10 +166,12 @@ void catnake_run() {
                 } else if (catnake_occupied(body, len, next.x, next.y)) {
                     dead = true;
                 } else {
+                    old_tail = body[len - 1]; // remember tail to erase
                     for (int i = len - 1; i > 0; i--) body[i] = body[i - 1];
                     body[0] = next;
                     if (body[0].x == food.x && body[0].y == food.y) {
-                        if (len < CATNAKE_MAX) { body[len] = body[len - 1]; len++; }
+                        if (len < CATNAKE_MAX) { body[len] = old_tail; len++; }
+                        old_tail.x = -1; // didn't lose tail segment, don't erase
                         score++;
                         if (score > high_score) high_score = score;
                         food = catnake_place_food(body, len);
@@ -177,17 +181,15 @@ void catnake_run() {
                 if (pending_input == KEY_ENTER) break;
             }
             
-            catnake_render_all(body, len, food, score, dead);
+            catnake_render_all(body, len, food, score, dead, old_tail);
+            old_tail.x = -1; // reset for next frame if dead/waiting
             
             uint32_t delay_loops;
             if (dead) delay_loops = 50;
             else {
-                // Progressive speed
-                if (score < 5) delay_loops = 60;
-                else if (score < 15) delay_loops = 45;
-                else if (score < 30) delay_loops = 30;
-                else if (score < 50) delay_loops = 20;
-                else delay_loops = 15;
+                // Progressive speed: start at 60, getting slightly faster linearly
+                delay_loops = 60 - (score / 2); // gets faster every 2 apples
+                if (delay_loops < 15) delay_loops = 15; // cap the maximum speed
             }
 
             for (uint32_t d = 0; d < delay_loops; d++) {
