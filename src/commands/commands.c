@@ -40,6 +40,10 @@ static const cmd_entry_t g_commands[] = {
     {"mamu", "text editor", cmd_mamu},
     {"desktop", "launch desktop environment", cmd_desktop},
     {"kat", "display file", cmd_kat},
+    {"uptime",  "show time since boot",       cmd_uptime},
+    {"sleep",   "sleep N milliseconds",        cmd_sleep},
+    {"calc",    "evaluate integer expression", cmd_calc},
+    {"beep",    "play PC speaker tone",        cmd_beep},
 };
 
 bool cmd_dispatch(const char *cmd, const char *args) {

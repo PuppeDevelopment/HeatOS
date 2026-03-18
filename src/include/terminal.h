@@ -13,5 +13,6 @@ void term_putc(char c, uint8_t attr);
 void term_puts(const char *s);
 void term_reset_screen(void);
 void terminal_run(void);
+void term_print_history(void);
 
 #endif

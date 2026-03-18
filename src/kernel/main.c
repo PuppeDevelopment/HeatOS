@@ -14,6 +14,7 @@
 #include "types.h"
 #include "vga.h"
 #include "web_stack.h"
+#include "pit.h"
 
 #define KERNEL_BOOT_MEM_BYTES 0x4000000u
 
@@ -30,6 +31,9 @@ void kernel_main(void) {
 
     idt_init();
     klog_info("boot", "idt initialized");
+
+    pit_init();
+    klog_info("boot", "pit timer initialized @100Hz");
 
     pmm_init(KERNEL_BOOT_MEM_BYTES);
     klog_log_u32(KLOG_INFO, "mm", "pmm free pages", pmm_free_blocks_count(), 10);

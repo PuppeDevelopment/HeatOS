@@ -35,3 +35,7 @@ void idt_init() {
 
     idt_flush((uint32_t)&idt_ptr);
 }
+
+void idt_register_handler(uint8_t num, void *handler_fn) {
+    idt_set_gate(num, (uint32_t)handler_fn, 0x08, 0x8E);
+}

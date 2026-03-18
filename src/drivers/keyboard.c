@@ -113,10 +113,15 @@ int keyboard_poll(void) {
                 case 0x50: return KEY_DOWN;
                 case 0x4B: return KEY_LEFT;
                 case 0x4D: return KEY_RIGHT;
+                case 0x47: return KEY_HOME;
+                case 0x4F: return KEY_END;
+                case 0x53: return KEY_DELETE;
+                case 0x49: return KEY_PAGEUP;
+                case 0x51: return KEY_PAGEDOWN;
                 default: continue;
             }
-        }
 
+        }
         switch (code) {
             case 0x01: return KEY_ESCAPE;
             case 0x0E: return KEY_BACKSPACE;

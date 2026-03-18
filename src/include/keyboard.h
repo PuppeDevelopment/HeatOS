@@ -17,6 +17,11 @@
 #define KEY_F3        0x112
 #define KEY_F4        0x113
 #define KEY_F10       0x119
+#define KEY_HOME      0x120
+#define KEY_END       0x121
+#define KEY_DELETE    0x122
+#define KEY_PAGEUP    0x123
+#define KEY_PAGEDOWN  0x124
 
 void keyboard_init(void);
 int  keyboard_poll(void);     /* Returns 0 if no key, otherwise keycode */

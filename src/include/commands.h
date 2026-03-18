@@ -48,6 +48,10 @@ void cmd_wget(const char *args);
 void cmd_mamu(const char *args);
 void cmd_desktop(const char *args);
 void cmd_catnake(const char *args);
+void cmd_uptime(const char *args);
+void cmd_sleep(const char *args);
+void cmd_calc(const char *args);
+void cmd_beep(const char *args);
 void cmd_kat(const char *args);
 
 bool cmd_copy_file_path(const char *src_path, const char *dst_path, int *bytes_out);
