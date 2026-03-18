@@ -1,5 +1,7 @@
 param(
-    [switch]$SkipIso
+    [switch]$SkipIso,
+    [ValidateSet("x86", "x64")]
+    [string]$Arch = "x86"
 )
 
 $ErrorActionPreference = "Stop"
@@ -25,21 +27,25 @@ function Pause-IfNeeded {
 
 try {
 
+$is64 = $Arch -ieq "x64"
+$artifactSuffix = if ($is64) { "64" } else { "" }
+
 # ---- Paths ----------------------------------------------------------------
 $projectRoot  = Split-Path -Parent $PSScriptRoot
 $buildDir     = Join-Path $projectRoot "build"
 $srcDir       = Join-Path $projectRoot "src"
 $includeDir   = Join-Path $srcDir "include"
-$linkerScript = Join-Path $projectRoot "kernel.ld"
+$linkerScript = Join-Path $projectRoot $(if ($is64) { "kernel64.ld" } else { "kernel.ld" })
 
 $bootSource   = Join-Path $srcDir "boot\boot.asm"
-$entrySource  = Join-Path $srcDir "kernel\entry.asm"
+$entrySource  = Join-Path $srcDir $(if ($is64) { "kernel\entry64.asm" } else { "kernel\entry.asm" })
 
-$bootBin      = Join-Path $buildDir "boot.bin"
-$kernelElf    = Join-Path $buildDir "kernel.elf"
-$kernelBin    = Join-Path $buildDir "kernel.bin"
-$imagePath    = Join-Path $buildDir "Heatos.img"
-$isoPath      = Join-Path $buildDir "Heatos.iso"
+$bootBin      = Join-Path $buildDir ("boot{0}.bin" -f $artifactSuffix)
+$kernelElf    = Join-Path $buildDir ("kernel{0}.elf" -f $artifactSuffix)
+$kernelBin    = Join-Path $buildDir ("kernel{0}.bin" -f $artifactSuffix)
+$imagePath    = Join-Path $buildDir ("Heatos{0}.img" -f $artifactSuffix)
+$isoPath      = Join-Path $buildDir ("Heatos{0}.iso" -f $artifactSuffix)
+$imageFileName = [System.IO.Path]::GetFileName($imagePath)
 
 $maxKernelSectors = 256
 $maxKernelBytes   = 512 * $maxKernelSectors
@@ -84,73 +90,106 @@ if (-not (Test-Path $lldPath))     { throw "ld.lld not found in $llvmBinDir" }
 if (-not (Test-Path $objcopyPath)) { throw "llvm-objcopy not found in $llvmBinDir" }
 
 # ---- Collect C/C++ source files -------------------------------------------
-$cSources = Get-ChildItem -Recurse -Filter "*.c" -Path $srcDir
-$cppSources = Get-ChildItem -Recurse -Filter "*.cpp" -Path $srcDir
+if ($is64) {
+    $cSources = @((Get-Item (Join-Path $srcDir "kernel\main64.c")))
+    $cppSources = @()
+} else {
+    $cSources = Get-ChildItem -Recurse -Filter "*.c" -Path $srcDir | Where-Object { $_.Name -ne "main64.c" }
+    $cppSources = Get-ChildItem -Recurse -Filter "*.cpp" -Path $srcDir
+}
 
 Write-Host ""
-Write-Host "=== HeatOS Build (C/C++ + ASM, 32-bit Protected Mode) ===" -ForegroundColor Cyan
+Write-Host "=== HeatOS Build (C/C++ + ASM, arch=$Arch) ===" -ForegroundColor Cyan
 Write-Host ""
 
 # ---- Step 1: Assemble kernel entry (ELF32 object) -------------------------
-Write-Host "  [ASM] entry.asm, gdt_flush.asm, idt_flush.asm" -ForegroundColor Yellow
-$entryObj = Join-Path $buildDir "entry.o"
+if ($is64) {
+    Write-Host "  [ASM64] entry64.asm" -ForegroundColor Yellow
+    $entryObj = Join-Path $buildDir "entry64.o"
+    $null = & $nasmPath -f elf64 $entrySource -o $entryObj 2>&1
+    if ($LASTEXITCODE -ne 0) { throw "NASM failed on entry64.asm" }
+} else {
+    Write-Host "  [ASM] entry.asm, gdt_flush.asm, idt_flush.asm" -ForegroundColor Yellow
+    $entryObj = Join-Path $buildDir "entry.o"
     $gdtFlushObj = Join-Path $buildDir "gdt_flush.o"
     $idtFlushObj = Join-Path $buildDir "idt_flush.o"
-$null = & $nasmPath -f elf32 $entrySource -o $entryObj 2>&1
+    $null = & $nasmPath -f elf32 $entrySource -o $entryObj 2>&1
     $null = & $nasmPath -f elf32 "src/kernel/gdt_flush.asm" -o $gdtFlushObj 2>&1
     $null = & $nasmPath -f elf32 "src/kernel/idt_flush.asm" -o $idtFlushObj 2>&1
-if ($LASTEXITCODE -ne 0) { throw "NASM failed on entry.asm" }
+    if ($LASTEXITCODE -ne 0) { throw "NASM failed on entry.asm" }
+}
 
 # ---- Step 2: Compile all C files ------------------------------------------
-$cFlags = @(
-    "--target=i386-none-elf",
-    "-march=i386",
-    "-mno-mmx",
-    "-mno-sse",
-    "-mno-sse2",
-    "-msoft-float",
-    "-fno-vectorize",
-    "-fno-slp-vectorize",
-    "-ffreestanding",
-    "-nostdlib",
-    "-fno-stack-protector",
-    "-fno-pie",
-    "-O2",
-    "-Wall",
-    "-Wextra",
-    "-I$includeDir",
-    "-c"
-)
+if ($is64) {
+    $cFlags = @(
+        "--target=x86_64-none-elf",
+        "-march=x86-64",
+        "-mno-red-zone",
+        "-ffreestanding",
+        "-nostdlib",
+        "-fno-stack-protector",
+        "-fno-pie",
+        "-fno-pic",
+        "-O2",
+        "-Wall",
+        "-Wextra",
+        "-I$includeDir",
+        "-c"
+    )
 
-$cppFlags = @(
-    "--target=i386-none-elf",
-    "-march=i386",
-    "-mno-mmx",
-    "-mno-sse",
-    "-mno-sse2",
-    "-msoft-float",
-    "-fno-vectorize",
-    "-fno-slp-vectorize",
-    "-ffreestanding",
-    "-nostdlib",
-    "-nostdlib++",
-    "-fno-stack-protector",
-    "-fno-pie",
-    "-fno-exceptions",
-    "-fno-rtti",
-    "-fno-threadsafe-statics",
-    "-fno-use-cxa-atexit",
-    "-O2",
-    "-Wall",
-    "-Wextra",
-    "-std=c++17",
-    "-I$includeDir",
-    "-c",
-    "-x",
-    "c++"
-)
+    $cppFlags = @()
+    $objFiles = @($entryObj)
+} else {
+    $cFlags = @(
+        "--target=i386-none-elf",
+        "-march=i386",
+        "-mno-mmx",
+        "-mno-sse",
+        "-mno-sse2",
+        "-msoft-float",
+        "-fno-vectorize",
+        "-fno-slp-vectorize",
+        "-ffreestanding",
+        "-nostdlib",
+        "-fno-stack-protector",
+        "-fno-pie",
+        "-O2",
+        "-Wall",
+        "-Wextra",
+        "-I$includeDir",
+        "-c"
+    )
 
-$objFiles = @($entryObj, $gdtFlushObj, $idtFlushObj)
+    $cppFlags = @(
+        "--target=i386-none-elf",
+        "-march=i386",
+        "-mno-mmx",
+        "-mno-sse",
+        "-mno-sse2",
+        "-msoft-float",
+        "-fno-vectorize",
+        "-fno-slp-vectorize",
+        "-ffreestanding",
+        "-nostdlib",
+        "-nostdlib++",
+        "-fno-stack-protector",
+        "-fno-pie",
+        "-fno-exceptions",
+        "-fno-rtti",
+        "-fno-threadsafe-statics",
+        "-fno-use-cxa-atexit",
+        "-O2",
+        "-Wall",
+        "-Wextra",
+        "-std=c++17",
+        "-I$includeDir",
+        "-c",
+        "-x",
+        "c++"
+    )
+
+    $objFiles = @($entryObj, $gdtFlushObj, $idtFlushObj)
+}
 
 foreach ($cs in $cSources) {
     $objName = [System.IO.Path]::GetFileNameWithoutExtension($cs.Name) + ".o"
@@ -177,7 +216,7 @@ foreach ($cpps in $cppSources) {
 }
 
 # ---- Step 3: Link into ELF ------------------------------------------------
-Write-Host "  [LD]  kernel.elf" -ForegroundColor Yellow
+Write-Host "  [LD]  $([System.IO.Path]::GetFileName($kernelElf))" -ForegroundColor Yellow
 $lldOutput = & $lldPath -T $linkerScript -nostdlib -o $kernelElf @objFiles 2>&1
 if ($LASTEXITCODE -ne 0) {
     $lldOutput | ForEach-Object { Write-Host $_ }
@@ -185,7 +224,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 # ---- Step 4: Convert ELF to flat binary -----------------------------------
-Write-Host "  [BIN] kernel.bin" -ForegroundColor Yellow
+Write-Host "  [BIN] $([System.IO.Path]::GetFileName($kernelBin))" -ForegroundColor Yellow
 $null = & $objcopyPath -O binary $kernelElf $kernelBin 2>&1
 if ($LASTEXITCODE -ne 0) { throw "llvm-objcopy failed" }
 
@@ -209,7 +248,7 @@ if ($bootBytes.Length -ne 512) {
 }
 
 # ---- Step 7: Build floppy image -------------------------------------------
-Write-Host "  [IMG] Heatos.img" -ForegroundColor Yellow
+Write-Host "  [IMG] $imageFileName" -ForegroundColor Yellow
 $disk = New-Object byte[] $floppyImageBytes
 [System.Array]::Copy($bootBytes, 0, $disk, 0, $bootBytes.Length)
 [System.Array]::Copy($kernelBytes, 0, $disk, 512, $kernelBytes.Length)
@@ -225,9 +264,9 @@ if (-not $SkipIso) {
     if ($isoTool) {
         if (Test-Path $isoPath) { Remove-Item $isoPath -Force }
         if ($isoTool.Name -ieq "xorriso") {
-            & $isoTool.Source -as mkisofs -quiet -V "HEATOS" -o $isoPath -b "Heatos.img" -c "boot.cat" $buildDir
+            & $isoTool.Source -as mkisofs -quiet -V "HEATOS" -o $isoPath -b $imageFileName -c "boot.cat" $buildDir
         } else {
-            & $isoTool.Source -quiet -V "HEATOS" -o $isoPath -b "Heatos.img" -c "boot.cat" $buildDir
+            & $isoTool.Source -quiet -V "HEATOS" -o $isoPath -b $imageFileName -c "boot.cat" $buildDir
         }
     } else {
         Write-Host "  ISO tool not found (skipping)." -ForegroundColor DarkGray

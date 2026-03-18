@@ -6,6 +6,12 @@ size_t strlen(const char *s) {
     return n;
 }
 
+size_t strnlen(const char *s, size_t max_len) {
+    size_t n = 0;
+    while (n < max_len && s[n]) n++;
+    return n;
+}
+
 int strcmp(const char *a, const char *b) {
     while (*a && *a == *b) { a++; b++; }
     return (int)(uint8_t)*a - (int)(uint8_t)*b;
@@ -95,11 +101,88 @@ void *memmove(void *dst, const void *src, size_t n) {
     return dst;
 }
 
+int memcmp(const void *a, const void *b, size_t n) {
+    const uint8_t *pa = (const uint8_t *)a;
+    const uint8_t *pb = (const uint8_t *)b;
+
+    for (size_t i = 0; i < n; i++) {
+        if (pa[i] != pb[i]) {
+            return (int)pa[i] - (int)pb[i];
+        }
+    }
+
+    return 0;
+}
+
 char *strchr(const char *s, int c) {
     while (*s != (char)c) {
         if (!*s++) return NULL;
     }
     return (char *)s;
+}
+
+char *strstr(const char *haystack, const char *needle) {
+    size_t needle_len;
+
+    if (!haystack || !needle) return NULL;
+
+    needle_len = strlen(needle);
+    if (needle_len == 0) return (char *)haystack;
+
+    while (*haystack) {
+        if (strncmp(haystack, needle, needle_len) == 0) {
+            return (char *)haystack;
+        }
+        haystack++;
+    }
+
+    return NULL;
+}
+
+static bool is_delim_char(char c, const char *delim) {
+    while (*delim) {
+        if (c == *delim++) return true;
+    }
+    return false;
+}
+
+char *strtok_r(char *str, const char *delim, char **saveptr) {
+    char *token_start;
+    char *p;
+
+    if (!saveptr) return NULL;
+    if (!delim || !*delim) delim = " ";
+
+    p = str ? str : *saveptr;
+    if (!p) return NULL;
+
+    while (*p && is_delim_char(*p, delim)) {
+        p++;
+    }
+
+    if (*p == '\0') {
+        *saveptr = p;
+        return NULL;
+    }
+
+    token_start = p;
+
+    while (*p && !is_delim_char(*p, delim)) {
+        p++;
+    }
+
+    if (*p) {
+        *p = '\0';
+        p++;
+    }
+
+    *saveptr = p;
+    return token_start;
+}
+
+char *strtok(char *str, const char *delim) {
+    static char *state;
+    return strtok_r(str, delim, &state);
 }
 
 void itoa(int value, char *buf, int base) {

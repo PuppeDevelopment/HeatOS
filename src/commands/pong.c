@@ -10,6 +10,15 @@
 #define PONG_PADDLE_H 4
 #define PONG_WIN_SCORE 7
 
+#define PONG_BASE_DELAY_LOOPS 3000000
+#define PONG_MIN_DELAY_LOOPS 1500000
+#define PONG_SPEEDUP_TICKS 220
+#define PONG_SPEEDUP_STEP 70000
+#define PONG_MAX_SPEED_STAGE 20
+
+#define PONG_BASE_MOVE_STRIDE 6
+#define PONG_MIN_MOVE_STRIDE 2
+
 static int pong_clamp_paddle(int y) {
     if (y < 0) return 0;
     if (y > (PONG_HEIGHT - PONG_PADDLE_H)) return (PONG_HEIGHT - PONG_PADDLE_H);
@@ -98,55 +107,60 @@ void cmd_pong(const char *args) {
             else if (ball_y > ai_y + (PONG_PADDLE_H / 2)) ai_y++;
             ai_y = pong_clamp_paddle(ai_y);
 
-            ball_x += ball_dx;
-            ball_y += ball_dy;
+            rally_ticks++;
 
-            if (ball_y <= 0) {
-                ball_y = 0;
-                ball_dy = 1;
-            }
-            if (ball_y >= PONG_HEIGHT - 1) {
-                ball_y = PONG_HEIGHT - 1;
-                ball_dy = -1;
-            }
+            int speed_stage = rally_ticks / PONG_SPEEDUP_TICKS;
+            if (speed_stage > PONG_MAX_SPEED_STAGE) speed_stage = PONG_MAX_SPEED_STAGE;
 
-            int player_x = 2;
-            int ai_x = PONG_WIDTH - 3;
+            int move_stride = PONG_BASE_MOVE_STRIDE - (speed_stage / 4);
+            if (move_stride < PONG_MIN_MOVE_STRIDE) move_stride = PONG_MIN_MOVE_STRIDE;
 
-            if (ball_dx < 0 && ball_x == player_x + 1) {
-                if (ball_y >= player_y && ball_y < player_y + PONG_PADDLE_H) {
-                    ball_dx = 1;
-                    if (ball_y < player_y + (PONG_PADDLE_H / 2)) ball_dy = -1;
-                    else ball_dy = 1;
+            if ((rally_ticks % move_stride) == 0) {
+                ball_x += ball_dx;
+                ball_y += ball_dy;
+
+                if (ball_y <= 0) {
+                    ball_y = 0;
+                    ball_dy = 1;
                 }
-            }
-
-            if (ball_dx > 0 && ball_x == ai_x - 1) {
-                if (ball_y >= ai_y && ball_y < ai_y + PONG_PADDLE_H) {
-                    ball_dx = -1;
-                    if (ball_y < ai_y + (PONG_PADDLE_H / 2)) ball_dy = -1;
-                    else ball_dy = 1;
+                if (ball_y >= PONG_HEIGHT - 1) {
+                    ball_y = PONG_HEIGHT - 1;
+                    ball_dy = -1;
                 }
-            }
 
-            if (ball_x < 0) {
-                ai_score++;
-                break;
-            }
-            if (ball_x >= PONG_WIDTH) {
-                player_score++;
-                break;
+                int player_x = 2;
+                int ai_x = PONG_WIDTH - 3;
+
+                if (ball_dx < 0 && ball_x == player_x + 1) {
+                    if (ball_y >= player_y && ball_y < player_y + PONG_PADDLE_H) {
+                        ball_dx = 1;
+                        if (ball_y < player_y + (PONG_PADDLE_H / 2)) ball_dy = -1;
+                        else ball_dy = 1;
+                    }
+                }
+
+                if (ball_dx > 0 && ball_x == ai_x - 1) {
+                    if (ball_y >= ai_y && ball_y < ai_y + PONG_PADDLE_H) {
+                        ball_dx = -1;
+                        if (ball_y < ai_y + (PONG_PADDLE_H / 2)) ball_dy = -1;
+                        else ball_dy = 1;
+                    }
+                }
+
+                if (ball_x < 0) {
+                    ai_score++;
+                    break;
+                }
+                if (ball_x >= PONG_WIDTH) {
+                    player_score++;
+                    break;
+                }
             }
 
             pong_draw_scene(player_y, ai_y, ball_x, ball_y, player_score, ai_score);
 
-            rally_ticks++;
-
-            int speed_stage = rally_ticks / 90;
-            if (speed_stage > 20) speed_stage = 20;
-
-            int delay_loops = 900000 - (speed_stage * 40000);
-            if (delay_loops < 100000) delay_loops = 100000;
+            int delay_loops = PONG_BASE_DELAY_LOOPS - (speed_stage * PONG_SPEEDUP_STEP);
+            if (delay_loops < PONG_MIN_DELAY_LOOPS) delay_loops = PONG_MIN_DELAY_LOOPS;
 
             for (volatile uint32_t d = 0; d < (uint32_t)delay_loops; d++) {
                 (void)d;

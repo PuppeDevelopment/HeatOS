@@ -8,6 +8,8 @@ section .text
 
 global _start
 extern kernel_main
+extern __bss_start
+extern __bss_end
 
 _start:
     ; Data segments already set by bootloader, but reinforce
@@ -18,6 +20,14 @@ _start:
     mov gs, ax
     mov ss, ax
     mov esp, 0x90000
+
+    ; Clear kernel BSS to guarantee zero-initialized globals.
+    mov edi, __bss_start
+    mov ecx, __bss_end
+    sub ecx, edi
+    xor eax, eax
+    shr ecx, 2
+    rep stosd
 
     ; ---- Build a minimal IDT with 48 entries (32 exceptions + 16 IRQs) ----
     ; Each entry: 8 bytes (offset_lo, selector, zero, type_attr, offset_hi)

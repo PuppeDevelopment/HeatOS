@@ -2,6 +2,8 @@ param(
     [switch]$SkipBuild,
     [switch]$BootIso,
     [switch]$NoNetwork,
+    [ValidateSet("x86", "x64")]
+    [string]$Arch = "x86",
     [ValidateSet("virtio", "bga")]
     [string]$DisplayBackend = "virtio"
 )
@@ -34,12 +36,15 @@ function Pause-IfNeeded {
 }
 
 try {
+    $is64 = $Arch -ieq "x64"
+    $artifactSuffix = if ($is64) { "64" } else { "" }
+
     $projectRoot = Split-Path -Parent $PSScriptRoot
-    $imagePath = Join-Path $projectRoot "build\Heatos.img"
-    $isoPath = Join-Path $projectRoot "build\Heatos.iso"
+    $imagePath = Join-Path $projectRoot ("build\Heatos{0}.img" -f $artifactSuffix)
+    $isoPath = Join-Path $projectRoot ("build\Heatos{0}.iso" -f $artifactSuffix)
 
     if (-not $SkipBuild) {
-        & (Join-Path $PSScriptRoot "build.ps1")
+        & (Join-Path $PSScriptRoot "build.ps1") -Arch $Arch
 
         if ($LASTEXITCODE -ne $null -and $LASTEXITCODE -ne 0) {
             throw "Build step failed. Fix the build error shown above, then run again."
@@ -55,9 +60,13 @@ try {
         throw "Disk image not found: $imagePath"
     }
 
-    $qemu = Get-Command qemu-system-i386 -ErrorAction SilentlyContinue
-    if (-not $qemu) {
+    $qemu = $null
+    if ($is64) {
         $qemu = Get-Command qemu-system-x86_64 -ErrorAction SilentlyContinue
+        if (-not $qemu) { $qemu = Get-Command qemu-system-i386 -ErrorAction SilentlyContinue }
+    } else {
+        $qemu = Get-Command qemu-system-i386 -ErrorAction SilentlyContinue
+        if (-not $qemu) { $qemu = Get-Command qemu-system-x86_64 -ErrorAction SilentlyContinue }
     }
     $qemuPath = $null
 
@@ -65,20 +74,23 @@ try {
         $qemuPath = $qemu.Source
     }
     else {
+        $primary = if ($is64) { "x86_64" } else { "i386" }
+        $secondary = if ($is64) { "i386" } else { "x86_64" }
+
         $qemuPath = @(
-            (Join-Path $env:ProgramFiles "qemu\qemu-system-i386.exe"),
-            (Join-Path $env:ProgramFiles "qemu\qemu-system-x86_64.exe"),
-            (Join-Path $env:ProgramFiles "QEMU\qemu-system-i386.exe"),
-            (Join-Path $env:ProgramFiles "QEMU\qemu-system-x86_64.exe"),
-            (Join-Path ${env:ProgramFiles(x86)} "qemu\qemu-system-i386.exe"),
-            (Join-Path ${env:ProgramFiles(x86)} "qemu\qemu-system-x86_64.exe"),
-            (Join-Path ${env:ProgramFiles(x86)} "QEMU\qemu-system-i386.exe"),
-            (Join-Path ${env:ProgramFiles(x86)} "QEMU\qemu-system-x86_64.exe")
+            (Join-Path $env:ProgramFiles ("qemu\qemu-system-{0}.exe" -f $primary)),
+            (Join-Path $env:ProgramFiles ("QEMU\qemu-system-{0}.exe" -f $primary)),
+            (Join-Path ${env:ProgramFiles(x86)} ("qemu\qemu-system-{0}.exe" -f $primary)),
+            (Join-Path ${env:ProgramFiles(x86)} ("QEMU\qemu-system-{0}.exe" -f $primary)),
+            (Join-Path $env:ProgramFiles ("qemu\qemu-system-{0}.exe" -f $secondary)),
+            (Join-Path $env:ProgramFiles ("QEMU\qemu-system-{0}.exe" -f $secondary)),
+            (Join-Path ${env:ProgramFiles(x86)} ("qemu\qemu-system-{0}.exe" -f $secondary)),
+            (Join-Path ${env:ProgramFiles(x86)} ("QEMU\qemu-system-{0}.exe" -f $secondary))
         ) | Where-Object { $null -ne $_ -and (Test-Path $_) } | Select-Object -First 1
     }
 
     if (-not $qemuPath) {
-        throw "qemu-system-i386 was not found. Install with: winget install --id SoftwareFreedomConservancy.QEMU -e --accept-package-agreements --accept-source-agreements, then reopen your terminal."
+        throw "QEMU was not found. Install with: winget install --id SoftwareFreedomConservancy.QEMU -e --accept-package-agreements --accept-source-agreements, then reopen your terminal."
     }
 
     $qemuArgs = @()

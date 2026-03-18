@@ -82,11 +82,12 @@ void terminal_run(void) {
 
                     if (strcmp(cmdbuf, "help") == 0) {
                         term_puts("Available commands:\n");
-                        term_puts("  File:    ls mkdir rm touch cd pwd tree cp find grep rmdir mv\n");
+                        term_puts("  File:    ls mkdir rm touch cat cd pwd tree cp find grep rmdir mv\n");
                         term_puts("  Network: ping wget nslookup ifconfig netstat traceroute curl telnet\n");
-                        term_puts("  System:  echo uname whoami date ps kill top reboot shutdown\n");
+                        term_puts("  System:  echo uname whoami date ps kill top dmesg kstats reboot shutdown\n");
                         term_puts("  Games:   catnake pong\n");
-                        term_puts("  Apps:    mamu kat\n");
+                        term_puts("  Apps:    mamu kat desktop\n");
+                        term_puts("  Note:    echo supports > redirection\n");
                         term_puts("  UI:      help clear\n");
                     } else if (strcmp(cmdbuf, "clear") == 0) {
                         term_reset_screen();

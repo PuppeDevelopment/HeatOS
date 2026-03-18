@@ -12,6 +12,7 @@ static const cmd_entry_t g_commands[] = {
     {"find", "search files by name", cmd_find},
     {"grep", "search file content", cmd_grep},
     {"echo", "print text", cmd_echo},
+    {"cat", "display file", cmd_cat},
     {"uname", "print kernel info", cmd_uname},
     {"whoami", "print active user", cmd_whoami},
     {"date", "print RTC date and time", cmd_date},
@@ -26,6 +27,8 @@ static const cmd_entry_t g_commands[] = {
     {"ps", "list running tasks", cmd_ps},
     {"kill", "terminate task", cmd_kill},
     {"top", "live task monitor", cmd_top},
+    {"dmesg", "show kernel ring log", cmd_dmesg},
+    {"kstats", "show kernel subsystem stats", cmd_kstats},
     {"catnake", "snake game", cmd_catnake},
     {"pong", "launch Pong game", cmd_pong},
     {"ls", "list files", cmd_ls},
@@ -35,6 +38,7 @@ static const cmd_entry_t g_commands[] = {
     {"ping", "ping IP address", cmd_ping},
     {"wget", "download file", cmd_wget},
     {"mamu", "text editor", cmd_mamu},
+    {"desktop", "launch desktop environment", cmd_desktop},
     {"kat", "display file", cmd_kat},
 };
 
