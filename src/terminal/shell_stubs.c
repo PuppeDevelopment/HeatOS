@@ -31,8 +31,7 @@ static const stub_command_t g_stub_commands[] = {
     {"ps", "list running tasks"},
     {"kill", "terminate task"},
     {"top", "live task monitor"},
-    {"pong", "launch Pong game"},
-    {"tetris", "launch Tetris game"}
+    {"pong", "launch Pong game"}
 };
 
 bool shell_try_stub_command(const char *cmd, const char *args) {

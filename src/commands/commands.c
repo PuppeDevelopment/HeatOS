@@ -26,17 +26,15 @@ static const cmd_entry_t g_commands[] = {
     {"ps", "list running tasks", cmd_ps},
     {"kill", "terminate task", cmd_kill},
     {"top", "live task monitor", cmd_top},
+    {"catnake", "snake game", cmd_catnake},
     {"pong", "launch Pong game", cmd_pong},
-    {"tetris", "launch Tetris game", cmd_tetris},
     {"ls", "list files", cmd_ls},
     {"mkdir", "make directory", cmd_mkdir},
     {"rm", "remove file/dir", cmd_rm},
     {"touch", "create file", cmd_touch},
     {"ping", "ping IP address", cmd_ping},
     {"wget", "download file", cmd_wget},
-    {"guess", "guessing game", cmd_guess},
     {"mamu", "text editor", cmd_mamu},
-    {"catnake", "snake game", cmd_catnake},
     {"kat", "display file", cmd_kat},
 };
 

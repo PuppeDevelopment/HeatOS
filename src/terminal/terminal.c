@@ -85,7 +85,7 @@ void terminal_run(void) {
                         term_puts("  File:    ls mkdir rm touch cd pwd tree cp find grep rmdir mv\n");
                         term_puts("  Network: ping wget nslookup ifconfig netstat traceroute curl telnet\n");
                         term_puts("  System:  echo uname whoami date ps kill top reboot shutdown\n");
-                        term_puts("  Games:   catnake guess pong tetris\n");
+                        term_puts("  Games:   catnake pong\n");
                         term_puts("  Apps:    mamu kat\n");
                         term_puts("  UI:      help clear\n");
                     } else if (strcmp(cmdbuf, "clear") == 0) {
