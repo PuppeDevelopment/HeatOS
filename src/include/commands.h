@@ -56,6 +56,7 @@ void cmd_java(const char *args);
 void cmd_jarinfo(const char *args);
 void cmd_java_dir(const char *args);
 void cmd_kat(const char *args);
+void cmd_plinko(const char *args);
 
 bool cmd_copy_file_path(const char *src_path, const char *dst_path, int *bytes_out);
 

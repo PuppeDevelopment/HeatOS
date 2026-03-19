@@ -3,6 +3,7 @@
 #include "catnake.h"
 #include "kat.h"
 #include "desktop.h"
+#include "plinko.h"
 
 void cmd_mamu(const char *args) {
     mamu_run(args ? args : "");
@@ -26,5 +27,11 @@ void cmd_cat(const char *args) {
 void cmd_desktop(const char *args) {
     (void)args;
     desktop_run();
+    term_reset_screen();
+}
+
+void cmd_plinko(const char *args) {
+    (void)args;
+    plinko_run();
     term_reset_screen();
 }

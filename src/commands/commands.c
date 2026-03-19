@@ -46,6 +46,7 @@ static const cmd_entry_t g_commands[] = {
     {"beep",    "play PC speaker tone",        cmd_beep},
     {"java",    "run TinyJVM/HJAR app",        cmd_java},
     {"jarinfo", "inspect JAR/ZIP contents",     cmd_jarinfo},
+    {"plinko",  "play Plinko game",             cmd_plinko},
     {"/java",   "jump to /java directory",      cmd_java_dir},
 };
 
