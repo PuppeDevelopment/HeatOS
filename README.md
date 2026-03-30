@@ -1,4 +1,6 @@
-﻿# HeatOS
+## I made the decicion to archive this project. I don't have much motivation and this os is in a state, where AI cannot improve it more unless everything get rewritten or we get some super AI.
+ 
+ # HeatOS
 
 ### Remember that HeatOS is fully made by Artificial Intelligence.
 
